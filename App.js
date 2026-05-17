@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -28,6 +28,9 @@ import {
   getDefaultVehicle,
   getDefaultZone,
   getLanguageOption,
+  isSupportedCurrency,
+  localizeAddon,
+  SUPPORTED_CURRENCIES,
   getVehicleById,
   unwrapList,
 } from "./src/data";
@@ -55,6 +58,7 @@ import {
 
 const STORAGE_KEYS = {
   language: "scoot-bali.language",
+  currency: "scoot-bali.currency",
   session: "scoot-bali.session",
   onboarding: "scoot-bali.onboarding",
 };
@@ -78,7 +82,17 @@ function initialAuthForm() {
   };
 }
 
-function getErrorMessage(error) {
+function initialBookingContact() {
+  return {
+    fullName: "",
+    phone: "",
+    hasTelegram: false,
+    hasWechat: false,
+    hasWhatsapp: false,
+  };
+}
+
+function getErrorMessage(error, fallback = "Something went wrong") {
   if (error instanceof ApiError) {
     if (typeof error.details === "object" && error.details && !Array.isArray(error.details)) {
       const firstValue = Object.values(error.details)[0];
@@ -92,7 +106,7 @@ function getErrorMessage(error) {
     return error.message;
   }
 
-  return error?.message || "Something went wrong";
+  return error?.message || fallback;
 }
 
 export default function App() {
@@ -114,6 +128,7 @@ export default function App() {
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [stack, setStack] = useState([{ name: "splash" }]);
   const [language, setLanguage] = useState("en");
+  const [currency, setCurrency] = useState("USD");
   const [bootstrap, setBootstrap] = useState(null);
   const [bootstrapLoading, setBootstrapLoading] = useState(true);
   const [bootstrapError, setBootstrapError] = useState("");
@@ -137,6 +152,7 @@ export default function App() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [selectedAddons, setSelectedAddons] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState("online_card");
+  const [bookingContact, setBookingContact] = useState(() => initialBookingContact());
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
@@ -153,6 +169,7 @@ export default function App() {
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   const route = stack[stack.length - 1];
+  const getLocalizedErrorMessage = (error) => getErrorMessage(error, translate(language, "somethingWentWrong"));
 
   useEffect(() => {
     if (interLoaded && soraLoaded) {
@@ -171,8 +188,9 @@ export default function App() {
 
     async function restore() {
       try {
-        const [storedLanguage, storedSession, storedOnboarding] = await Promise.all([
+        const [storedLanguage, storedCurrency, storedSession, storedOnboarding] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.language),
+          AsyncStorage.getItem(STORAGE_KEYS.currency),
           AsyncStorage.getItem(STORAGE_KEYS.session),
           AsyncStorage.getItem(STORAGE_KEYS.onboarding),
         ]);
@@ -183,6 +201,9 @@ export default function App() {
 
         if (storedLanguage) {
           setLanguage(storedLanguage);
+        }
+        if (storedCurrency && isSupportedCurrency(storedCurrency)) {
+          setCurrency(storedCurrency);
         }
         if (storedSession) {
           setSession(JSON.parse(storedSession));
@@ -223,6 +244,10 @@ export default function App() {
   }, [language]);
 
   useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEYS.currency, currency).catch(() => {});
+  }, [currency]);
+
+  useEffect(() => {
     let active = true;
     setBootstrapLoading(true);
     setBootstrapError("");
@@ -250,7 +275,7 @@ export default function App() {
           return;
         }
 
-        setBootstrapError(getErrorMessage(error));
+        setBootstrapError(getLocalizedErrorMessage(error));
         setBootstrapLoading(false);
       });
 
@@ -283,6 +308,7 @@ export default function App() {
     setQuickReplies([]);
     setThreadMessages([]);
     setThreadMessage("");
+    setBookingContact(initialBookingContact());
     setQuote(null);
     setStack([{ name: nextRoute }]);
   }
@@ -322,7 +348,7 @@ export default function App() {
       if (!background) {
         setPrivateLoading(false);
       }
-      setPrivateError(getErrorMessage(error));
+      setPrivateError(getLocalizedErrorMessage(error));
       if (error instanceof ApiError && error.status === 401) {
         await signOut();
       }
@@ -338,9 +364,21 @@ export default function App() {
     loadPrivateData(session.access);
   }, [language, session?.access]);
 
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+
+    setBookingContact((current) => ({
+      ...current,
+      fullName: current.fullName || profile.full_name || "",
+      phone: current.phone || profile.phone || "",
+    }));
+  }, [profile]);
+
   const fleet = bootstrap?.fleet?.items || [];
   const zones = bootstrap?.deliveryZones || [];
-  const addons = bootstrap?.addons || [];
+  const addons = useMemo(() => (bootstrap?.addons || []).map((item) => localizeAddon(item, language)), [bootstrap?.addons, language]);
   const scooter = useMemo(() => getVehicleById(fleet, selectedScooterId), [fleet, selectedScooterId]);
 
   useEffect(() => {
@@ -364,6 +402,7 @@ export default function App() {
           deliveryAddress,
           deliverySlot,
           paymentMethod,
+          currency,
         }),
       },
     })
@@ -379,14 +418,14 @@ export default function App() {
           return;
         }
         setQuote(null);
-        setQuoteError(getErrorMessage(error));
+        setQuoteError(getLocalizedErrorMessage(error));
         setQuoteLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [bookingRange, deliveryAddress, deliverySlot, deliveryZoneId, language, paymentMethod, scooter, selectedAddons, zones]);
+  }, [bookingRange, currency, deliveryAddress, deliverySlot, deliveryZoneId, language, paymentMethod, scooter, selectedAddons, zones]);
 
   function getPrimarySupportThread(threads = chatThreads) {
     return threads.find((item) => item.status === "open") || threads[0] || null;
@@ -399,6 +438,11 @@ export default function App() {
 
   function updateAuthField(key, value) {
     setAuthForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateBookingContactField(key, value) {
+    setQuoteError("");
+    setBookingContact((current) => ({ ...current, [key]: value }));
   }
 
   async function handleAuthSubmit() {
@@ -444,7 +488,7 @@ export default function App() {
         setStack([{ name: "home" }]);
       }
     } catch (error) {
-      setAuthError(getErrorMessage(error));
+      setAuthError(getLocalizedErrorMessage(error));
     } finally {
       setAuthSubmitting(false);
     }
@@ -460,7 +504,7 @@ export default function App() {
       });
       setAuthError(translate(language, "passwordResetSent"));
     } catch (error) {
-      setAuthError(getErrorMessage(error));
+      setAuthError(getLocalizedErrorMessage(error));
     }
   }
 
@@ -485,6 +529,24 @@ export default function App() {
     return thread;
   }
 
+  async function startNewSupportThread() {
+    if (!session?.access) {
+      setStack([{ name: "login" }]);
+      return null;
+    }
+
+    const thread = await apiRequest("/chat/threads/", {
+      method: "POST",
+      token: session.access,
+      language,
+      body: {
+        title: `${translate(language, "supportChat")} #${chatThreads.length + 1}`,
+      },
+    });
+    await loadPrivateData(session.access, { background: true });
+    return thread;
+  }
+
   async function handleAfterLanguageConfirm() {
     await AsyncStorage.setItem(STORAGE_KEYS.onboarding, "1").catch(() => {});
     setHasSeenOnboarding(true);
@@ -495,7 +557,7 @@ export default function App() {
           method: "PATCH",
           token: session.access,
           language,
-          body: { language },
+          body: { language, currency },
         });
         setProfile(nextProfile);
       } catch {
@@ -509,55 +571,123 @@ export default function App() {
   }
 
   async function handleCreateBooking() {
-    if (!session?.access || !scooter) {
-      setStack([{ name: "login" }]);
+    if (!scooter) {
+      return;
+    }
+
+    if (!scooter.available) {
+      setQuoteError(translate(language, "scooterUnavailable"));
+      return;
+    }
+    if (!deliveryAddress.trim()) {
+      setQuoteError(translate(language, "deliveryAddressRequired"));
+      return;
+    }
+    if (!deliveryZoneId) {
+      setQuoteError(translate(language, "deliveryZoneRequired"));
+      return;
+    }
+    if (quoteLoading || !quote) {
+      setQuoteError(translate(language, "waitForPricing"));
+      return;
+    }
+    if (!session?.access && (!bookingContact.fullName.trim() || !bookingContact.phone.trim())) {
+      setQuoteError(translate(language, "guestContactRequired"));
       return;
     }
 
     setBookingSubmitting(true);
     try {
       const zone = zones.find((item) => String(item.id) === String(deliveryZoneId));
-      const booking = await apiRequest("/bookings/", {
-        method: "POST",
-        token: session.access,
-        language,
-        body: buildCreateBookingPayload({
-          scooter,
-          range: bookingRange,
-          selectedAddonIds: selectedAddons,
-          deliveryZone: zone,
-          deliveryAddress,
-          deliverySlot,
-          paymentMethod,
-          currency: profile?.currency || "USD",
-        }),
+      const payload = buildCreateBookingPayload({
+        scooter,
+        range: bookingRange,
+        selectedAddonIds: selectedAddons,
+        deliveryZone: zone,
+        deliveryAddress,
+        deliverySlot,
+        paymentMethod,
+        currency,
       });
 
-      let finalBooking = booking;
-      if (paymentMethod === "online_card") {
-        await apiRequest("/payments/create/", {
+      let accessToken = session?.access || null;
+      let finalBooking = null;
+
+      if (session?.access) {
+        finalBooking = await apiRequest("/bookings/", {
           method: "POST",
           token: session.access,
           language,
-          body: { booking_id: booking.id, provider: "mock" },
+          body: payload,
         });
+      } else {
+        const guestResult = await apiRequest("/bookings/guest-create/", {
+          method: "POST",
+          language,
+          body: {
+            ...payload,
+            guest_full_name: bookingContact.fullName.trim(),
+            guest_phone: bookingContact.phone.trim(),
+            guest_has_telegram: bookingContact.hasTelegram,
+            guest_has_wechat: bookingContact.hasWechat,
+            guest_has_whatsapp: bookingContact.hasWhatsapp,
+            language,
+          },
+        });
+
+        finalBooking = guestResult.booking;
+        if (guestResult.auth?.access && guestResult.auth?.refresh) {
+          accessToken = guestResult.auth.access;
+          await persistSession({
+            access: guestResult.auth.access,
+            refresh: guestResult.auth.refresh,
+          });
+          await loadPrivateData(guestResult.auth.access);
+        }
       }
 
-      const bookingsData = await apiRequest("/bookings/", {
-        token: session.access,
-        language,
-      });
-      const nextBookings = unwrapList(bookingsData);
-      setBookings(nextBookings);
-      await loadPrivateData(session.access);
-      const refreshedBooking = nextBookings.find((item) => item.id === booking.id);
-      if (refreshedBooking) {
-        finalBooking = refreshedBooking;
+      if (!finalBooking) {
+        throw new Error(translate(language, "bookingCreateFailed"));
+      }
+
+      if (paymentMethod === "online_card" || paymentMethod === "crypto") {
+        if (!accessToken) {
+          throw new Error(translate(language, "paymentSessionRequired"));
+        }
+
+        const payment = await apiRequest("/payments/create/", {
+          method: "POST",
+          token: accessToken,
+          language,
+          body: { booking_id: finalBooking.id, provider: paymentMethod === "crypto" ? "crypto" : "stripe" },
+        });
+
+        if (payment?.payment_url) {
+          try {
+            await Linking.openURL(payment.payment_url);
+          } catch {
+            setQuoteError(translate(language, "paymentRedirectHint"));
+          }
+        }
+      }
+
+      if (accessToken) {
+        const bookingsData = await apiRequest("/bookings/", {
+          token: accessToken,
+          language,
+        });
+        const nextBookings = unwrapList(bookingsData);
+        setBookings(nextBookings);
+        await loadPrivateData(accessToken);
+        const refreshedBooking = nextBookings.find((item) => item.id === finalBooking.id);
+        if (refreshedBooking) {
+          finalBooking = refreshedBooking;
+        }
       }
 
       setStack([{ name: "confirmed", params: { booking: finalBooking } }]);
     } catch (error) {
-      setQuoteError(getErrorMessage(error));
+      setQuoteError(getLocalizedErrorMessage(error));
     } finally {
       setBookingSubmitting(false);
     }
@@ -576,7 +706,7 @@ export default function App() {
       });
       await loadPrivateData(session.access);
     } catch (error) {
-      setPrivateError(getErrorMessage(error));
+      setPrivateError(getLocalizedErrorMessage(error));
     }
   }
 
@@ -654,7 +784,7 @@ export default function App() {
 
       await loadPrivateData(session.access);
     } catch (error) {
-      setDocumentError(getErrorMessage(error));
+      setDocumentError(getLocalizedErrorMessage(error));
     } finally {
       setDocumentUploading(false);
     }
@@ -681,7 +811,7 @@ export default function App() {
       setThreadMessages(nextMessages);
       return nextMessages;
     } catch (error) {
-      setThreadError(getErrorMessage(error));
+      setThreadError(getLocalizedErrorMessage(error));
       return [];
     } finally {
       if (!background) {
@@ -734,7 +864,7 @@ export default function App() {
       await refreshThreadMessages(threadId, session.access, { background: true });
       await loadPrivateData(session.access, { background: true });
     } catch (error) {
-      setThreadError(getErrorMessage(error));
+      setThreadError(getLocalizedErrorMessage(error));
     } finally {
       setThreadLoading(false);
     }
@@ -750,11 +880,14 @@ export default function App() {
       setThreadMessage(text);
       await openThread(thread.id);
     } catch (error) {
-      setSupportError(getErrorMessage(error));
+      setSupportError(getLocalizedErrorMessage(error));
     }
   }
 
   function updateProfileField(key, value) {
+    if (key === "currency" && isSupportedCurrency(value)) {
+      setCurrency(value);
+    }
     setProfile((current) => ({ ...(current || {}), [key]: value }));
   }
 
@@ -775,12 +908,12 @@ export default function App() {
           phone: profile.phone,
           country: profile.country,
           language,
-          currency: profile.currency || "USD",
+          currency,
         },
       });
       setProfile(nextProfile);
     } catch (error) {
-      setSettingsError(getErrorMessage(error));
+      setSettingsError(getLocalizedErrorMessage(error));
     } finally {
       setSettingsSaving(false);
     }
@@ -808,7 +941,8 @@ export default function App() {
     bookingStatuses: bootstrap?.content?.common?.bookingStatuses || {},
     documentTypes: bootstrap?.content?.common?.documentTypes || {},
     documentStatuses: bootstrap?.content?.common?.documentStatuses || {},
-    daysLabel: bootstrap?.content?.common?.days || "days",
+    specLabels: bootstrap?.content?.common?.specLabels || {},
+    daysLabel: bootstrap?.content?.common?.days || copy.daysLabel,
   };
   const app = {
     addOnsCount: selectedAddons.length,
@@ -818,6 +952,8 @@ export default function App() {
     chatThreads,
     content: bootstrap?.content || {},
     copy,
+    currencies: SUPPORTED_CURRENCIES,
+    currency,
     deliverySlots: bootstrap?.deliverySlots || DEFAULT_DELIVERY_SLOTS,
     documents,
     fleet,
@@ -827,6 +963,7 @@ export default function App() {
     notifications,
     profile,
     quickReplies,
+    sessionActive: Boolean(session?.access),
     zones,
   };
 
@@ -856,13 +993,33 @@ export default function App() {
         setSelectedScooterId(id);
         setStack((current) => [...current, { name: "detail" }]);
       },
-      startBooking: () => setStack((current) => [...current, { name: "booking-dates" }]),
+      startBooking: () => {
+        if (!scooter?.available) {
+          setQuoteError(translate(language, "scooterUnavailable"));
+          return;
+        }
+        setStack((current) => [...current, { name: "booking-dates" }]);
+      },
       continueToDelivery: () => setStack((current) => [...current, { name: "delivery" }]),
-      continueToPayment: () => setStack((current) => [...current, { name: "payment" }]),
+      continueToPayment: () => {
+        if (!deliveryAddress.trim()) {
+          setQuoteError(translate(language, "deliveryAddressRequired"));
+          return;
+        }
+        if (!deliveryZoneId) {
+          setQuoteError(translate(language, "deliveryZoneRequired"));
+          return;
+        }
+        if (quoteLoading || !quote) {
+          setQuoteError(translate(language, "waitForPricing"));
+          return;
+        }
+        setStack((current) => [...current, { name: "payment" }]);
+      },
       finishBooking: () => handleCreateBooking(),
       afterLanguageConfirm: () => handleAfterLanguageConfirm(),
     }),
-    [language, session, scooter, bookingRange, selectedAddons, deliveryZoneId, deliveryAddress, deliverySlot, paymentMethod, profile, zones],
+    [bookingContact, deliveryAddress, deliveryZoneId, language, paymentMethod, profile, quote, quoteLoading, scooter, session, zones],
   );
 
   if ((!interLoaded || !soraLoaded) && !fontGateExpired) {
@@ -899,7 +1056,7 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <View style={{ flex: 1, backgroundColor: COLORS.white, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
-          <Text style={{ color: COLORS.black, fontSize: 18, fontWeight: "700", marginBottom: 10 }}>Backend connection error</Text>
+          <Text style={{ color: COLORS.black, fontSize: 18, fontWeight: "700", marginBottom: 10 }}>{translate(language, "backendConnectionError")}</Text>
           <Text style={{ color: COLORS.gray700, textAlign: "center", marginBottom: 10 }}>{bootstrapError}</Text>
           <Text style={{ color: COLORS.gray500, fontSize: 12 }}>{API_BASE_URL}</Text>
         </View>
@@ -914,21 +1071,24 @@ export default function App() {
       screen = <SplashScreen copy={copy} />;
       break;
     case "onboarding-1":
-      screen = <OnboardingScreen step={1} navigation={navigation} />;
+      screen = <OnboardingScreen step={1} copy={copy} navigation={navigation} />;
       break;
     case "onboarding-2":
-      screen = <OnboardingScreen step={2} navigation={navigation} />;
+      screen = <OnboardingScreen step={2} copy={copy} navigation={navigation} />;
       break;
     case "onboarding-3":
-      screen = <OnboardingScreen step={3} navigation={navigation} />;
+      screen = <OnboardingScreen step={3} copy={copy} navigation={navigation} />;
       break;
     case "language":
       screen = (
         <LanguageScreen
           copy={copy}
+          currencies={SUPPORTED_CURRENCIES}
           languages={bootstrap?.languages || []}
           navigation={navigation}
+          selectedCurrency={currency}
           selectedLanguage={language}
+          setSelectedCurrency={setCurrency}
           setSelectedLanguage={setLanguage}
         />
       );
@@ -964,6 +1124,7 @@ export default function App() {
           app={app}
           bookingRange={bookingRange}
           navigation={navigation}
+          scooter={scooter}
           setBookingRange={setBookingRange}
         />
       );
@@ -994,9 +1155,12 @@ export default function App() {
         <PaymentScreen
           app={app}
           bookingRange={bookingRange}
+          bookingContact={bookingContact}
+          deliveryAddress={deliveryAddress}
           deliverySlot={deliverySlot}
           deliveryZoneId={deliveryZoneId}
           navigation={navigation}
+          onUpdateBookingContact={updateBookingContactField}
           paymentMethod={paymentMethod}
           quote={quote}
           quoteError={quoteError}
@@ -1028,7 +1192,18 @@ export default function App() {
       );
       break;
     case "profile":
-      screen = <ProfileScreen app={app} navigation={navigation} />;
+      screen = (
+        <ProfileScreen
+          app={app}
+          navigation={navigation}
+          onOpenSupportChat={async () => {
+            const thread = await ensureSupportThread();
+            if (thread) {
+              await openThread(thread.id);
+            }
+          }}
+        />
+      );
       break;
     case "notifications":
       screen = (
@@ -1064,7 +1239,7 @@ export default function App() {
           navigation={navigation}
           onOpenThread={openThread}
           onStartThread={async () => {
-            const thread = await ensureSupportThread();
+            const thread = await startNewSupportThread();
             if (thread) {
               await openThread(thread.id);
             }
@@ -1082,6 +1257,12 @@ export default function App() {
           messages={threadMessages}
           navigation={navigation}
           onSend={sendThreadMessage}
+          onStartThread={async () => {
+            const thread = await startNewSupportThread();
+            if (thread) {
+              await openThread(thread.id);
+            }
+          }}
           quickReplies={quickReplies}
           thread={chatThreads.find((item) => item.id === route.params?.threadId)}
           threadMessage={threadMessage}
@@ -1097,6 +1278,10 @@ export default function App() {
           navigation={navigation}
           onSave={saveProfileSettings}
           saving={settingsSaving}
+          updateCurrency={(nextCurrency) => {
+            setCurrency(nextCurrency);
+            updateProfileField("currency", nextCurrency);
+          }}
           updateField={updateProfileField}
         />
       );
