@@ -559,8 +559,7 @@ export function PaymentScreen({
     { key: "hasWechat", label: copy.wechat },
   ];
   const trustMarks = [copy.secureTrust1, copy.secureTrust2, copy.secureTrust3];
-  const primaryActionLabel =
-    paymentMethod === "cash_on_delivery" ? copy.reservePayOnDelivery : paymentMethod === "crypto" ? copy.payWithCrypto : copy.payWithCard;
+  const primaryActionLabel = copy.confirmBooking;
 
   const handleCardNumberChange = (value) => {
     const digits = value.replace(/\D/g, "").slice(0, 19);

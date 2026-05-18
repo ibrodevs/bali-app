@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as DocumentPicker from "expo-document-picker";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import {
@@ -40,7 +39,6 @@ import {
   BookingsScreen,
   DeliveryScreen,
   DetailScreen,
-  DocumentsScreen,
   FleetScreen,
   HomeScreen,
   LanguageScreen,
@@ -135,7 +133,6 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [bookings, setBookings] = useState([]);
-  const [documents, setDocuments] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [chatThreads, setChatThreads] = useState([]);
   const [quickReplies, setQuickReplies] = useState([]);
@@ -157,12 +154,10 @@ export default function App() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
-  const [selectedDocumentType, setSelectedDocumentType] = useState("passport");
-  const [documentError, setDocumentError] = useState("");
-  const [documentUploading, setDocumentUploading] = useState(false);
   const [supportError, setSupportError] = useState("");
   const [threadMessages, setThreadMessages] = useState([]);
   const [threadLoading, setThreadLoading] = useState(false);
+  const [threadSending, setThreadSending] = useState(false);
   const [threadError, setThreadError] = useState("");
   const [threadMessage, setThreadMessage] = useState("");
   const [settingsError, setSettingsError] = useState("");
@@ -302,7 +297,6 @@ export default function App() {
     setSession(null);
     setProfile(null);
     setBookings([]);
-    setDocuments([]);
     setNotifications([]);
     setChatThreads([]);
     setQuickReplies([]);
@@ -325,10 +319,9 @@ export default function App() {
     }
 
     try {
-      const [profileData, bookingsData, documentsData, notificationsData, threadsData, quickRepliesData] = await Promise.all([
+      const [profileData, bookingsData, notificationsData, threadsData, quickRepliesData] = await Promise.all([
         apiRequest("/profile/", { token: accessToken, language }),
         apiRequest("/bookings/", { token: accessToken, language }),
-        apiRequest("/documents/my/", { token: accessToken, language }),
         apiRequest("/notifications/", { token: accessToken, language }),
         apiRequest("/chat/threads/", { token: accessToken, language }),
         apiRequest("/chat/quick-replies/?is_active=true", { token: accessToken, language }),
@@ -336,7 +329,6 @@ export default function App() {
 
       setProfile(profileData);
       setBookings(unwrapList(bookingsData));
-      setDocuments(unwrapList(documentsData));
       setNotifications(unwrapList(notificationsData));
       setChatThreads(unwrapList(threadsData));
       setQuickReplies(unwrapList(quickRepliesData));
@@ -382,7 +374,16 @@ export default function App() {
   const scooter = useMemo(() => getVehicleById(fleet, selectedScooterId), [fleet, selectedScooterId]);
 
   useEffect(() => {
+    const quoteEnabled = route.name === "delivery" || route.name === "payment";
+    if (!quoteEnabled) {
+      setQuote(null);
+      setQuoteLoading(false);
+      return;
+    }
+
     if (!scooter || !deliveryZoneId) {
+      setQuote(null);
+      setQuoteLoading(false);
       return;
     }
 
@@ -425,7 +426,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [bookingRange, currency, deliveryAddress, deliverySlot, deliveryZoneId, language, paymentMethod, scooter, selectedAddons, zones]);
+  }, [bookingRange, currency, deliveryAddress, deliverySlot, deliveryZoneId, language, paymentMethod, route.name, scooter, selectedAddons, zones]);
 
   function getPrimarySupportThread(threads = chatThreads) {
     return threads.find((item) => item.status === "open") || threads[0] || null;
@@ -744,52 +745,6 @@ export default function App() {
     }
   }
 
-  async function handlePickDocument() {
-    if (!session?.access) {
-      setStack([{ name: "login" }]);
-      return;
-    }
-
-    setDocumentUploading(true);
-    setDocumentError("");
-
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: true,
-        multiple: false,
-        type: ["image/*", "application/pdf"],
-      });
-
-      if (result.canceled || !result.assets?.length) {
-        setDocumentUploading(false);
-        return;
-      }
-
-      const asset = result.assets[0];
-      const formData = new FormData();
-      formData.append("type", selectedDocumentType);
-      formData.append("file", {
-        uri: asset.uri,
-        name: asset.name || `${selectedDocumentType}.jpg`,
-        type: asset.mimeType || "application/octet-stream",
-      });
-
-      await apiRequest("/documents/", {
-        method: "POST",
-        token: session.access,
-        language,
-        body: formData,
-        isMultipart: true,
-      });
-
-      await loadPrivateData(session.access);
-    } catch (error) {
-      setDocumentError(getLocalizedErrorMessage(error));
-    } finally {
-      setDocumentUploading(false);
-    }
-  }
-
   async function refreshThreadMessages(threadId, accessToken = session?.access, options = {}) {
     const { background = false } = options;
     if (!accessToken || !threadId) {
@@ -849,8 +804,17 @@ export default function App() {
         return;
       }
 
-      setThreadLoading(true);
+      setThreadSending(true);
       setThreadError("");
+      const optimisticMessage = {
+        id: `temp-${Date.now()}`,
+        text,
+        created_at: new Date().toISOString(),
+        sender: { email: profile?.email || session?.user?.email || "" },
+        pending: true,
+      };
+      setThreadMessages((current) => [...current, optimisticMessage]);
+      setThreadMessage("");
       await apiRequest("/chat/messages/", {
         method: "POST",
         token: session.access,
@@ -860,13 +824,13 @@ export default function App() {
           text,
         },
       });
-      setThreadMessage("");
       await refreshThreadMessages(threadId, session.access, { background: true });
       await loadPrivateData(session.access, { background: true });
     } catch (error) {
+      setThreadMessages((current) => current.filter((item) => !item.pending));
       setThreadError(getLocalizedErrorMessage(error));
     } finally {
-      setThreadLoading(false);
+      setThreadSending(false);
     }
   }
 
@@ -939,8 +903,6 @@ export default function App() {
     types: bootstrap?.content?.common?.types || {},
     paymentMethods: bootstrap?.content?.common?.paymentMethods || {},
     bookingStatuses: bootstrap?.content?.common?.bookingStatuses || {},
-    documentTypes: bootstrap?.content?.common?.documentTypes || {},
-    documentStatuses: bootstrap?.content?.common?.documentStatuses || {},
     specLabels: bootstrap?.content?.common?.specLabels || {},
     daysLabel: bootstrap?.content?.common?.days || copy.daysLabel,
   };
@@ -955,7 +917,6 @@ export default function App() {
     currencies: SUPPORTED_CURRENCIES,
     currency,
     deliverySlots: bootstrap?.deliverySlots || DEFAULT_DELIVERY_SLOTS,
-    documents,
     fleet,
     language,
     languageLabel: currentLanguageOption?.label || language.toUpperCase(),
@@ -1216,20 +1177,6 @@ export default function App() {
         />
       );
       break;
-    case "documents":
-      screen = (
-        <DocumentsScreen
-          app={app}
-          error={documentError}
-          loading={privateLoading}
-          navigation={navigation}
-          onPickDocument={handlePickDocument}
-          selectedType={selectedDocumentType}
-          setSelectedType={setSelectedDocumentType}
-          uploading={documentUploading}
-        />
-      );
-      break;
     case "support":
       screen = (
         <SupportScreen
@@ -1254,6 +1201,7 @@ export default function App() {
           app={app}
           error={threadError}
           loading={threadLoading}
+          sending={threadSending}
           messages={threadMessages}
           navigation={navigation}
           onSend={sendThreadMessage}
