@@ -95,6 +95,7 @@ export const SUPPORTED_CURRENCIES = [
   { code: "EUR", symbol: "€" },
   { code: "CNY", symbol: "¥" },
   { code: "AUD", symbol: "A$" },
+  { code: "IDR", symbol: "Rp" },
 ];
 
 export const CURRENCY_RATES = {
@@ -103,6 +104,7 @@ export const CURRENCY_RATES = {
   EUR: 0.92,
   CNY: 7.24,
   AUD: 1.52,
+  IDR: 15650,
 };
 
 export const DEFAULT_DELIVERY_SLOTS = ["09:00", "12:00", "16:00", "19:00"];
