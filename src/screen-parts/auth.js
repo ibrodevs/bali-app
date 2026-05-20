@@ -161,6 +161,7 @@ export function LoginScreen({
 }) {
   const insets = useSafeAreaInsets();
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const isReset = mode === "reset";
 
   return (
     <CenteredScrollView backgroundColor={COLORS.white}>
@@ -181,7 +182,7 @@ export function LoginScreen({
             { key: "signin", label: copy.signIn },
             { key: "signup", label: copy.createAccount },
           ].map((item) => {
-            const active = mode === item.key;
+            const active = isReset ? item.key === "signin" : mode === item.key;
             return (
               <Pressable
                 key={item.key}
@@ -197,10 +198,10 @@ export function LoginScreen({
         </View>
 
         <AppText family="sora" weight="extrabold" style={{ fontSize: 32, color: COLORS.black, letterSpacing: -1.2, marginBottom: 8 }}>
-          {mode === "signin" ? copy.welcomeBack : copy.createAccount}
+          {isReset ? copy.forgotPassword : mode === "signin" ? copy.welcomeBack : copy.createAccount}
         </AppText>
         <AppText family="inter" style={{ fontSize: 14, color: COLORS.gray500, marginBottom: 28 }}>
-          {mode === "signin" ? copy.signInHint : copy.registerHint}
+          {isReset ? copy.passwordResetSent : mode === "signin" ? copy.signInHint : copy.registerHint}
         </AppText>
 
         <View style={{ gap: 14, marginBottom: 20 }}>
@@ -210,7 +211,7 @@ export function LoginScreen({
               <LabeledInput label={copy.phone} value={form.phone} onChangeText={(value) => updateField("phone", value)} keyboardType="phone-pad" />
             </>
           ) : null}
-          <LabeledInput label={copy.email} value={form.email} onChangeText={(value) => updateField("email", value)} keyboardType="email-address" autoCapitalize="none" />
+          <LabeledInput label={copy.email} value={form.email} onChangeText={(value) => updateField("email", value)} keyboardType="email-address" autoCapitalize="none" editable={!isReset} />
           <LabeledInput
             label={copy.password}
             value={form.password}
@@ -239,7 +240,7 @@ export function LoginScreen({
         ) : null}
 
         <PrimaryButton variant="dark" onPress={onSubmit} disabled={submitting}>
-          {submitting ? copy.loading : mode === "signin" ? `${copy.signIn} →` : `${copy.createAccount} →`}
+          {submitting ? copy.loading : isReset ? `${copy.save} →` : mode === "signin" ? `${copy.signIn} →` : `${copy.createAccount} →`}
         </PrimaryButton>
 
         <Pressable style={{ marginTop: 18, alignSelf: "center" }} onPress={() => navigation.goBack()}>

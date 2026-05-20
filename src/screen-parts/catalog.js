@@ -3,20 +3,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatConvertedMoney, getScooterGallery, vehicleMatchesCategory, vehicleMatchesSearch } from "../data";
 import { COLORS } from "../theme";
-import {
-  AppText,
-  Badge,
-  BottomNav,
-  CenteredScrollView,
-  FilterPill,
-  GlassCircleButton,
-  PageContent,
-  PrimaryButton,
-  ResolvedIcon,
-  ScooterThumb,
-  SearchBar,
-  Stars,
-} from "../components";
+import { AppText, Badge, BottomNav, CenteredScrollView, FilterPill, GlassCircleButton, PageContent, PrimaryButton, ResolvedIcon, ScooterThumb, SearchBar, Stars } from "../components";
 import { EmptyCard, FleetCard, SectionHeader } from "./shared";
 
 export function HomeScreen({ app, navigation }) {
@@ -31,50 +18,37 @@ export function HomeScreen({ app, navigation }) {
     () => fleet.filter((vehicle) => vehicleMatchesSearch(vehicle, deferredSearch) && vehicleMatchesCategory(vehicle, category)),
     [category, deferredSearch, fleet],
   );
-  const featured = featuredList[0] || fleet[0];
+  const headerTitle = profile?.full_name || profile?.email || "Scoot Bali";
+  const headerInitials = (profile?.full_name || profile?.email || "SB").slice(0, 2).toUpperCase();
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.white }}>
       <CenteredScrollView backgroundColor={COLORS.white} contentContainerStyle={{ paddingBottom: 120 + Math.max(insets.bottom, 16) }}>
         <PageContent style={{ paddingHorizontal: 20, paddingTop: insets.top + 16 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <View>
-              <AppText family="inter" style={{ fontSize: 13, color: COLORS.gray500, marginBottom: 2 }}>
-                {copy.welcome}
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <AppText family="sora" weight="extrabold" style={{ fontSize: 22, color: COLORS.black, letterSpacing: -0.8, marginBottom: 10 }}>
+                {headerTitle}
               </AppText>
-              <AppText family="sora" weight="extrabold" style={{ fontSize: 22, color: COLORS.black, letterSpacing: -0.8 }}>
-                {profile?.full_name || profile?.email || "Scoot Bali"}
-              </AppText>
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                <Pressable onPress={() => navigation.push("language")} style={{ borderRadius: 999, backgroundColor: COLORS.gray100, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
+                    {`${copy.language} · ${app.languageLabel}`}
+                  </AppText>
+                </Pressable>
+                <Pressable onPress={() => navigation.push("settings")} style={{ borderRadius: 999, backgroundColor: COLORS.gray100, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
+                    {`${copy.currency} · ${app.currency}`}
+                  </AppText>
+                </Pressable>
+              </View>
             </View>
             <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center" }}>
               <AppText family="sora" weight="extrabold" style={{ fontSize: 16, color: COLORS.black }}>
-                {(profile?.full_name || profile?.email || "SB").slice(0, 2).toUpperCase()}
+                {headerInitials}
               </AppText>
             </View>
           </View>
-
-          {featured ? (
-            <View style={{ borderRadius: 28, overflow: "hidden", backgroundColor: COLORS.black, marginBottom: 18 }}>
-              <View style={{ padding: 12, paddingBottom: 0 }}>
-                <ScooterThumb scooter={featured} height={232} />
-              </View>
-              <View style={{ paddingHorizontal: 18, paddingTop: 18, paddingBottom: 20 }}>
-                <Badge variant="gold" style={{ alignSelf: "flex-start", marginBottom: 12 }}>
-                  {copy.readyMvp}
-                </Badge>
-                <AppText family="sora" weight="extrabold" style={{ fontSize: 24, color: COLORS.white, letterSpacing: -1, marginBottom: 8 }}>
-                  {featured.name}
-                </AppText>
-                <AppText family="inter" style={{ fontSize: 14, lineHeight: 24, color: "rgba(255,255,255,0.58)", marginBottom: 18 }}>
-                  {featured.description}
-                </AppText>
-                <PrimaryButton variant="gold" onPress={() => navigation.openScooter(featured.id)}>
-                  {`${copy.continue || "Continue"} →`}
-                </PrimaryButton>
-              </View>
-            </View>
-          ) : null}
-
           <SearchBar placeholder={copy.searchFleet} value={search} onChangeText={setSearch} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 16, paddingBottom: 22 }}>
             {[

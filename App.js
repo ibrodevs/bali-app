@@ -93,12 +93,25 @@ function initialBookingContact() {
 function getErrorMessage(error, fallback = "Something went wrong") {
   if (error instanceof ApiError) {
     if (typeof error.details === "object" && error.details && !Array.isArray(error.details)) {
-      const firstValue = Object.values(error.details)[0];
-      if (Array.isArray(firstValue)) {
-        return String(firstValue[0]);
-      }
-      if (typeof firstValue === "string") {
-        return firstValue;
+      const firstEntry = Object.entries(error.details).find(([, value]) => {
+        if (typeof value === "string" && value.trim()) {
+          return true;
+        }
+        if (Array.isArray(value) && value.length) {
+          return true;
+        }
+        return false;
+      });
+
+      if (firstEntry) {
+        const [field, value] = firstEntry;
+        const firstMessage = Array.isArray(value) ? value[0] : value;
+        if (typeof firstMessage === "string" && firstMessage.trim()) {
+          if (field === "non_field_errors" || field === "detail" || field === "error") {
+            return firstMessage;
+          }
+          return `${field}: ${firstMessage}`;
+        }
       }
     }
     return error.message;
@@ -142,9 +155,9 @@ export default function App() {
   const [authForm, setAuthForm] = useState(initialAuthForm());
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [passwordResetSession, setPasswordResetSession] = useState(null);
   const [selectedScooterId, setSelectedScooterId] = useState(null);
   const [bookingRange, setBookingRange] = useState(() => createInitialBookingRange());
-  const [deliveryZoneId, setDeliveryZoneId] = useState(null);
   const [deliverySlot, setDeliverySlot] = useState(DEFAULT_DELIVERY_SLOTS[0]);
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [selectedAddons, setSelectedAddons] = useState([]);
@@ -225,7 +238,7 @@ export default function App() {
 
     const timeoutId = setTimeout(() => {
       if (hasSeenOnboarding) {
-        setStack([{ name: session ? "home" : "login" }]);
+        setStack([{ name: "home" }]);
       } else {
         setStack([{ name: "onboarding-1" }]);
       }
@@ -258,9 +271,6 @@ export default function App() {
         if (!selectedScooterId && data?.fleet?.items?.length) {
           setSelectedScooterId(data.fleet.items[0].id);
         }
-        if (!deliveryZoneId && data?.deliveryZones?.length) {
-          setDeliveryZoneId(data.deliveryZones[0].id);
-        }
         if (data?.deliverySlots?.length) {
           setDeliverySlot((current) => current || data.deliverySlots[0]);
         }
@@ -279,7 +289,7 @@ export default function App() {
     };
   }, [language]);
 
-  async function signOut(nextRoute = "login") {
+  async function signOut(nextRoute = "home") {
     if (session?.refresh) {
       try {
         await apiRequest("/auth/logout/", {
@@ -372,6 +382,7 @@ export default function App() {
   const zones = bootstrap?.deliveryZones || [];
   const addons = useMemo(() => (bootstrap?.addons || []).map((item) => localizeAddon(item, language)), [bootstrap?.addons, language]);
   const scooter = useMemo(() => getVehicleById(fleet, selectedScooterId), [fleet, selectedScooterId]);
+  const deliveryZone = useMemo(() => getDefaultZone(zones), [zones]);
 
   useEffect(() => {
     const quoteEnabled = route.name === "delivery" || route.name === "payment";
@@ -381,7 +392,7 @@ export default function App() {
       return;
     }
 
-    if (!scooter || !deliveryZoneId) {
+    if (!scooter) {
       setQuote(null);
       setQuoteLoading(false);
       return;
@@ -399,7 +410,7 @@ export default function App() {
           scooter,
           range: bookingRange,
           selectedAddonIds: selectedAddons,
-          deliveryZone: zones.find((item) => String(item.id) === String(deliveryZoneId)),
+          deliveryZone,
           deliveryAddress,
           deliverySlot,
           paymentMethod,
@@ -426,7 +437,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [bookingRange, currency, deliveryAddress, deliverySlot, deliveryZoneId, language, paymentMethod, route.name, scooter, selectedAddons, zones]);
+  }, [bookingRange, currency, deliveryAddress, deliverySlot, deliveryZone, language, paymentMethod, route.name, scooter, selectedAddons]);
 
   function getPrimarySupportThread(threads = chatThreads) {
     return threads.find((item) => item.status === "open") || threads[0] || null;
@@ -439,6 +450,14 @@ export default function App() {
 
   function updateAuthField(key, value) {
     setAuthForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleAuthModeChange(nextMode) {
+    setAuthMode(nextMode);
+    if (nextMode !== "reset") {
+      setPasswordResetSession(null);
+    }
+    setAuthError("");
   }
 
   function updateBookingContactField(key, value) {
@@ -463,7 +482,7 @@ export default function App() {
         await persistSession({ access: authData.access, refresh: authData.refresh });
         await loadPrivateData(authData.access);
         setStack([{ name: "home" }]);
-      } else {
+      } else if (authMode === "signup") {
         await apiRequest("/auth/register/", {
           method: "POST",
           language,
@@ -487,6 +506,29 @@ export default function App() {
         await persistSession({ access: authData.access, refresh: authData.refresh });
         await loadPrivateData(authData.access);
         setStack([{ name: "home" }]);
+      } else if (authMode === "reset" && passwordResetSession?.uid && passwordResetSession?.token) {
+        await apiRequest("/auth/password-reset-confirm/", {
+          method: "POST",
+          language,
+          body: {
+            uid: passwordResetSession.uid,
+            token: passwordResetSession.token,
+            new_password: authForm.password,
+          },
+        });
+
+        const authData = await apiRequest("/auth/login/", {
+          method: "POST",
+          language,
+          body: {
+            email: authForm.email.trim().toLowerCase(),
+            password: authForm.password,
+          },
+        });
+        await persistSession({ access: authData.access, refresh: authData.refresh });
+        await loadPrivateData(authData.access);
+        setPasswordResetSession(null);
+        setStack([{ name: "home" }]);
       }
     } catch (error) {
       setAuthError(getLocalizedErrorMessage(error));
@@ -498,11 +540,17 @@ export default function App() {
   async function handleForgotPassword() {
     setAuthError("");
     try {
-      await apiRequest("/auth/password-reset/", {
+      const resetData = await apiRequest("/auth/password-reset/", {
         method: "POST",
         language,
         body: { email: authForm.email.trim().toLowerCase() },
       });
+      setPasswordResetSession({
+        uid: resetData?.uid || "",
+        token: resetData?.token || "",
+      });
+      setAuthForm((current) => ({ ...current, password: "" }));
+      setAuthMode("reset");
       setAuthError(translate(language, "passwordResetSent"));
     } catch (error) {
       setAuthError(getLocalizedErrorMessage(error));
@@ -568,7 +616,7 @@ export default function App() {
       return;
     }
 
-    setStack([{ name: "login" }]);
+    setStack([{ name: "home" }]);
   }
 
   async function handleCreateBooking() {
@@ -584,10 +632,6 @@ export default function App() {
       setQuoteError(translate(language, "deliveryAddressRequired"));
       return;
     }
-    if (!deliveryZoneId) {
-      setQuoteError(translate(language, "deliveryZoneRequired"));
-      return;
-    }
     if (quoteLoading || !quote) {
       setQuoteError(translate(language, "waitForPricing"));
       return;
@@ -599,12 +643,11 @@ export default function App() {
 
     setBookingSubmitting(true);
     try {
-      const zone = zones.find((item) => String(item.id) === String(deliveryZoneId));
       const payload = buildCreateBookingPayload({
         scooter,
         range: bookingRange,
         selectedAddonIds: selectedAddons,
-        deliveryZone: zone,
+        deliveryZone,
         deliveryAddress,
         deliverySlot,
         paymentMethod,
@@ -884,6 +927,7 @@ export default function App() {
   }
 
   const currentLanguageOption = getLanguageOption(bootstrap?.languages, language);
+  const appContentOverrides = bootstrap?.dictionaryOverrides?.app || {};
   const copy = useMemo(
     () =>
       new Proxy(
@@ -893,11 +937,11 @@ export default function App() {
             if (typeof prop === "symbol") {
               return undefined;
             }
-            return translate(language, String(prop));
+            return appContentOverrides[String(prop)] || translate(language, String(prop));
           },
         },
       ),
-    [language],
+    [appContentOverrides, language],
   );
   const labels = {
     types: bootstrap?.content?.common?.types || {},
@@ -949,7 +993,7 @@ export default function App() {
       replace: (name, params = {}) => setStack((current) => replaceTop(current, { name, params })),
       goBack: () => setStack((current) => (current.length > 1 ? current.slice(0, -1) : current)),
       toTab: (name) => setStack([{ name }]),
-      signOut: () => signOut("login"),
+      signOut: () => signOut("home"),
       openScooter: (id) => {
         setSelectedScooterId(id);
         setStack((current) => [...current, { name: "detail" }]);
@@ -967,10 +1011,6 @@ export default function App() {
           setQuoteError(translate(language, "deliveryAddressRequired"));
           return;
         }
-        if (!deliveryZoneId) {
-          setQuoteError(translate(language, "deliveryZoneRequired"));
-          return;
-        }
         if (quoteLoading || !quote) {
           setQuoteError(translate(language, "waitForPricing"));
           return;
@@ -980,7 +1020,7 @@ export default function App() {
       finishBooking: () => handleCreateBooking(),
       afterLanguageConfirm: () => handleAfterLanguageConfirm(),
     }),
-    [bookingContact, deliveryAddress, deliveryZoneId, language, paymentMethod, profile, quote, quoteLoading, scooter, session, zones],
+    [bookingContact, deliveryAddress, language, paymentMethod, profile, quote, quoteLoading, scooter, session],
   );
 
   if ((!interLoaded || !soraLoaded) && !fontGateExpired) {
@@ -1064,7 +1104,7 @@ export default function App() {
           navigation={navigation}
           onForgotPassword={handleForgotPassword}
           onSubmit={handleAuthSubmit}
-          onToggleMode={setAuthMode}
+          onToggleMode={handleAuthModeChange}
           submitting={authSubmitting}
           updateField={updateAuthField}
         />
@@ -1097,13 +1137,11 @@ export default function App() {
           bookingRange={bookingRange}
           deliveryAddress={deliveryAddress}
           deliverySlot={deliverySlot}
-          deliveryZoneId={deliveryZoneId}
           navigation={navigation}
           scooter={scooter}
           selectedAddons={selectedAddons}
           setDeliveryAddress={setDeliveryAddress}
           setDeliverySlot={setDeliverySlot}
-          setDeliveryZoneId={setDeliveryZoneId}
           setSelectedAddons={setSelectedAddons}
           quote={quote}
           quoteError={quoteError}
@@ -1119,7 +1157,6 @@ export default function App() {
           bookingContact={bookingContact}
           deliveryAddress={deliveryAddress}
           deliverySlot={deliverySlot}
-          deliveryZoneId={deliveryZoneId}
           navigation={navigation}
           onUpdateBookingContact={updateBookingContactField}
           paymentMethod={paymentMethod}

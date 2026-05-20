@@ -46,6 +46,7 @@ export function LabeledInput({
   onRightPress,
   rightIconColor = COLORS.gray500,
   containerStyle,
+  ...rest
 }) {
   return (
     <View style={style}>
@@ -64,6 +65,7 @@ export function LabeledInput({
           autoCapitalize={autoCapitalize}
           multiline={multiline}
           numberOfLines={numberOfLines}
+          {...rest}
           style={[
             {
               minHeight: multiline ? 110 : 50,

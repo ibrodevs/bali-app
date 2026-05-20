@@ -77,7 +77,7 @@ export function BookingsScreen({ app, navigation, onOpenBookingStatus }) {
               );
             })
           ) : (
-            <EmptyCard title={copy.noBookings} body={copy.signInHint} />
+            <EmptyCard title={copy.noBookings} body={app.sessionActive ? copy.signInHint : copy.registerHint} />
           )}
         </PageContent>
       </CenteredScrollView>
@@ -91,6 +91,33 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
   const { copy, profile, bookings, notifications, languageLabel } = app;
   const completedCount = bookings.filter((item) => item.status === "completed").length;
   const primaryThread = app.chatThreads[0] || null;
+  const isSignedIn = app.sessionActive;
+  const quickStats = isSignedIn
+    ? [
+        { value: String(bookings.length), label: copy.bookings },
+        { value: String(completedCount), label: copy.completed },
+      ]
+    : [
+        { value: languageLabel, label: copy.language },
+        { value: app.currency, label: copy.currency },
+      ];
+  const profileActions = isSignedIn
+    ? [
+        { icon: "document-text-outline", label: copy.myBookings, action: () => navigation.toTab("bookings") },
+        { icon: "notifications-outline", label: `${copy.notifications} · ${notifications.filter((item) => !item.is_read).length}`, action: () => navigation.push("notifications") },
+        { icon: "globe-outline", label: `${copy.language} · ${languageLabel}`, action: () => navigation.push("language") },
+        { icon: "cash-outline", label: `${copy.currency} · ${app.currency}`, action: () => navigation.push("settings") },
+        { icon: "settings-outline", label: copy.accountSettings, action: () => navigation.push("settings") },
+        { icon: "help-circle-outline", label: copy.helpSupport, action: () => navigation.push("support") },
+        { icon: "log-out-outline", label: copy.signOut, action: navigation.signOut, danger: true },
+      ]
+    : [
+        { icon: "person-outline", label: copy.signIn, action: () => navigation.push("login") },
+        { icon: "person-add-outline", label: copy.createAccount, action: () => navigation.push("login") },
+        { icon: "globe-outline", label: `${copy.language} · ${languageLabel}`, action: () => navigation.push("language") },
+        { icon: "cash-outline", label: `${copy.currency} · ${app.currency}`, action: () => navigation.push("settings") },
+        { icon: "settings-outline", label: copy.accountSettings, action: () => navigation.push("settings") },
+      ];
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.gray100 }}>
@@ -108,15 +135,12 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
                   {profile?.full_name || copy.defaultUserName}
                 </AppText>
                 <AppText family="inter" style={{ fontSize: 13, color: COLORS.gray500 }}>
-                  {profile?.email}
+                  {profile?.email || `${languageLabel} · ${app.currency}`}
                 </AppText>
               </View>
             </View>
             <View style={{ flexDirection: "row", gap: 10 }}>
-              {[
-                { value: String(bookings.length), label: copy.bookings },
-                { value: String(completedCount), label: copy.completed },
-              ].map((item) => (
+              {quickStats.map((item) => (
                 <View key={item.label} style={{ flex: 1, borderRadius: 12, backgroundColor: COLORS.gray100, paddingVertical: 12, paddingHorizontal: 8, alignItems: "center" }}>
                   <AppText family="sora" weight="extrabold" style={{ fontSize: 20, color: COLORS.black }}>
                     {item.value}
@@ -130,7 +154,7 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
           </PageContent>
         </View>
         <PageContent style={{ paddingHorizontal: 20, paddingTop: 16, gap: 10 }}>
-          <Pressable onPress={onOpenSupportChat} style={{ borderRadius: 20, backgroundColor: COLORS.black, padding: 18, marginBottom: 4 }}>
+          <Pressable onPress={isSignedIn ? onOpenSupportChat : () => navigation.push("login")} style={{ borderRadius: 20, backgroundColor: COLORS.black, padding: 18, marginBottom: 4 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(255,215,0,0.16)", alignItems: "center", justifyContent: "center" }}>
@@ -148,18 +172,10 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
               <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
             </View>
             <AppText family="inter" style={{ fontSize: 13, lineHeight: 21, color: "rgba(255,255,255,0.72)" }}>
-              {primaryThread?.last_message?.text || copy.supportHint}
+              {primaryThread?.last_message?.text || (isSignedIn ? copy.supportHint : copy.registerHint)}
             </AppText>
           </Pressable>
-          {[
-            { icon: "document-text-outline", label: copy.myBookings, action: () => navigation.toTab("bookings") },
-            { icon: "notifications-outline", label: `${copy.notifications} · ${notifications.filter((item) => !item.is_read).length}`, action: () => navigation.push("notifications") },
-            { icon: "globe-outline", label: `${copy.language} · ${languageLabel}`, action: () => navigation.push("language") },
-            { icon: "cash-outline", label: `${copy.currency} · ${app.currency}`, action: () => navigation.push("settings") },
-            { icon: "settings-outline", label: copy.accountSettings, action: () => navigation.push("settings") },
-            { icon: "help-circle-outline", label: copy.helpSupport, action: () => navigation.push("support") },
-            { icon: "log-out-outline", label: copy.signOut, action: navigation.signOut, danger: true },
-          ].map((item) => (
+          {profileActions.map((item) => (
             <Pressable key={item.label} onPress={item.action} style={{ borderRadius: 14, backgroundColor: COLORS.white, paddingHorizontal: 18, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 14 }}>
               <Ionicons name={item.icon} size={20} color={item.danger ? COLORS.danger : COLORS.black} />
               <AppText family="inter" weight="medium" style={{ flex: 1, fontSize: 15, color: item.danger ? COLORS.danger : COLORS.black }}>
@@ -564,6 +580,17 @@ export function SettingsScreen({ app, error, navigation, onSave, saving, updateC
     <CenteredScrollView backgroundColor={COLORS.gray100}>
       <PageContent style={{ paddingHorizontal: 20, paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 24) + 20 }}>
         <ScreenHeader title={copy.accountSettings} onBack={navigation.goBack} />
+        <View style={{ borderRadius: 22, backgroundColor: COLORS.black, padding: 18, marginBottom: 18 }}>
+          <AppText family="inter" weight="bold" style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 10 }}>
+            {copy.profile}
+          </AppText>
+          <AppText family="sora" weight="extrabold" style={{ fontSize: 24, color: COLORS.white, letterSpacing: -0.8, marginBottom: 6 }}>
+            {profile.full_name || copy.defaultUserName}
+          </AppText>
+          <AppText family="inter" style={{ fontSize: 13, color: "rgba(255,255,255,0.62)" }}>
+            {profile.email || `${copy.currency} · ${app.currency}`}
+          </AppText>
+        </View>
         {error ? (
           <View style={{ marginBottom: 16, borderRadius: 12, backgroundColor: "#FEF2F2", paddingHorizontal: 14, paddingVertical: 12 }}>
             <AppText family="inter" style={{ fontSize: 13, color: COLORS.danger }}>

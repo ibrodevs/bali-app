@@ -15,9 +15,9 @@ import {
   formatMoney,
   getAddonTotalPrice,
   getBookingDuration,
+  getDefaultZone,
   getSelectedRentalDays,
   getWeekdayLabels,
-  getZoneById,
 } from "../data";
 import { COLORS, SHADOWS } from "../theme";
 import { AppText, Badge, CenteredScrollView, LabeledInput, LoadingBlock, PageContent, PrimaryButton, ResolvedIcon, ScooterThumb } from "../components";
@@ -65,11 +65,8 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
   const copy = app.copy;
   const currentMonthStart = startOfMonthValue(Date.now());
   const checkoutDay = bookingRange.end;
-  const months = useMemo(
-    () =>
-      [visibleMonthStart, shiftMonth(visibleMonthStart, 1)].map((monthStart) =>
-        buildCalendarMonth({ start: monthStart }, app.language),
-      ),
+  const calendarMonth = useMemo(
+    () => buildCalendarMonth({ start: visibleMonthStart }, app.language),
     [app.language, visibleMonthStart],
   );
   const todayTimestamp = useMemo(() => {
@@ -80,9 +77,7 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
 
   useEffect(() => {
     const selectedMonth = startOfMonthValue(bookingRange.start);
-    const nextVisibleMonth = shiftMonth(visibleMonthStart, 1);
-
-    if (selectedMonth < visibleMonthStart || selectedMonth > nextVisibleMonth) {
+    if (selectedMonth !== visibleMonthStart) {
       setVisibleMonthStart(selectedMonth);
     }
   }, [bookingRange.start]);
@@ -98,22 +93,19 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
     setAvailabilityLoading(true);
     setAvailabilityError("");
 
-    Promise.all(
-      [visibleMonthStart, shiftMonth(visibleMonthStart, 1)].map(async (monthStart) => {
-        const { year, month } = monthRequestParts(monthStart);
-        const response = await apiRequest(`/scooters/${scooter.id}/availability/?year=${year}&month=${month}`, {
-          language: app.language,
-        });
-        return Array.isArray(response?.days) ? response.days : [];
-      }),
-    )
-      .then((responses) => {
+    const { year, month } = monthRequestParts(visibleMonthStart);
+
+    apiRequest(`/scooters/${scooter.id}/availability/?year=${year}&month=${month}`, {
+      language: app.language,
+    })
+      .then((response) => {
         if (!active) {
           return;
         }
 
         const nextMap = new Map();
-        responses.flat().forEach((day) => {
+        const days = Array.isArray(response?.days) ? response.days : [];
+        days.forEach((day) => {
           if (day?.date) {
             nextMap.set(day.date, day.status || "available");
           }
@@ -226,7 +218,7 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
             <Ionicons name="chevron-back" size={18} color={visibleMonthStart <= currentMonthStart ? COLORS.gray300 : COLORS.white} />
           </Pressable>
           <AppText family="sora" weight="bold" style={{ fontSize: 17, color: COLORS.black }}>
-            {months[0]?.label}
+            {calendarMonth?.label}
           </AppText>
           <Pressable
             onPress={() => setVisibleMonthStart((current) => shiftMonth(current, 1))}
@@ -237,73 +229,71 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
         </View>
 
         <View style={{ gap: 16, marginBottom: 22 }}>
-          {months.map((calendar) => (
-            <View key={calendar.label} style={{ borderRadius: 22, borderWidth: 1, borderColor: COLORS.gray200, backgroundColor: COLORS.white, padding: 16, ...SHADOWS.card }}>
-              <AppText family="sora" weight="bold" style={{ fontSize: 18, color: COLORS.black, marginBottom: 12 }}>
-                {calendar.label}
-              </AppText>
+          <View style={{ borderRadius: 22, borderWidth: 1, borderColor: COLORS.gray200, backgroundColor: COLORS.white, padding: 16, ...SHADOWS.card }}>
+            <AppText family="sora" weight="bold" style={{ fontSize: 18, color: COLORS.black, marginBottom: 12 }}>
+              {calendarMonth.label}
+            </AppText>
 
-              <View style={{ flexDirection: "row", marginBottom: 8 }}>
-                {weekdayLabels.map((day) => (
-                  <View key={`${calendar.label}-${day}`} style={{ width: "14.2857%", alignItems: "center", paddingVertical: 4 }}>
-                    <AppText family="inter" weight="bold" style={{ fontSize: 11, color: COLORS.gray500 }}>
-                      {day}
-                    </AppText>
-                  </View>
-                ))}
-              </View>
+            <View style={{ flexDirection: "row", marginBottom: 8 }}>
+              {weekdayLabels.map((day) => (
+                <View key={`${calendarMonth.label}-${day}`} style={{ width: "14.2857%", alignItems: "center", paddingVertical: 4 }}>
+                  <AppText family="inter" weight="bold" style={{ fontSize: 11, color: COLORS.gray500 }}>
+                    {day}
+                  </AppText>
+                </View>
+              ))}
+            </View>
 
-              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                {Array.from({ length: calendar.leadingEmpty }).map((_, index) => (
-                  <View key={`${calendar.label}-empty-${index}`} style={{ width: "14.2857%", padding: 2 }}>
-                    <View style={{ aspectRatio: 1 }} />
-                  </View>
-                ))}
-                {calendar.days.map((item) => {
-                  const isStart = item.timestamp === bookingRange.start;
-                  const isEnd = item.timestamp === checkoutDay;
-                  const inRange = item.timestamp > bookingRange.start && item.timestamp < checkoutDay;
-                  const selected = selectedDays.has(item.timestamp) || isEnd;
-                  const isToday = item.timestamp === todayTimestamp;
-                  const availabilityStatus = statusForTimestamp(item.timestamp);
-                  const isAvailable = availabilityStatus === "available";
-                  const isUnavailable = availabilityStatus !== "available";
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              {Array.from({ length: calendarMonth.leadingEmpty }).map((_, index) => (
+                <View key={`${calendarMonth.label}-empty-${index}`} style={{ width: "14.2857%", padding: 2 }}>
+                  <View style={{ aspectRatio: 1 }} />
+                </View>
+              ))}
+              {calendarMonth.days.map((item) => {
+                const isStart = item.timestamp === bookingRange.start;
+                const isEnd = item.timestamp === checkoutDay;
+                const inRange = item.timestamp > bookingRange.start && item.timestamp < checkoutDay;
+                const selected = selectedDays.has(item.timestamp) || isEnd;
+                const isToday = item.timestamp === todayTimestamp;
+                const availabilityStatus = statusForTimestamp(item.timestamp);
+                const isAvailable = availabilityStatus === "available";
+                const isUnavailable = availabilityStatus !== "available";
 
-                  return (
-                    <View key={item.timestamp} style={{ width: "14.2857%", padding: 2 }}>
-                      <Pressable
-                        onPress={() => handleDatePress(item.timestamp, item.disabled || isUnavailable)}
+                return (
+                  <View key={item.timestamp} style={{ width: "14.2857%", padding: 2 }}>
+                    <Pressable
+                      onPress={() => handleDatePress(item.timestamp, item.disabled || isUnavailable)}
+                      style={{
+                        aspectRatio: 1,
+                        borderRadius: 18,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: isStart || isEnd ? COLORS.black : inRange ? "rgba(255,215,0,0.18)" : isAvailable ? "rgba(22,163,74,0.12)" : "rgba(220,38,38,0.12)",
+                        borderWidth: !selected && !item.disabled && isToday ? 1.5 : 1,
+                        borderColor: isStart || isEnd ? COLORS.black : !selected && !item.disabled && isToday ? COLORS.gold : isAvailable ? "rgba(22,163,74,0.25)" : "rgba(220,38,38,0.2)",
+                        opacity: item.disabled ? 0.45 : 1,
+                      }}
+                    >
+                      <AppText
+                        family="sora"
+                        weight={isStart || isEnd ? "bold" : selected ? "semibold" : "regular"}
                         style={{
-                          aspectRatio: 1,
-                          borderRadius: 18,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: isStart || isEnd ? COLORS.black : inRange ? "rgba(255,215,0,0.18)" : isAvailable ? "rgba(22,163,74,0.12)" : "rgba(220,38,38,0.12)",
-                          borderWidth: !selected && !item.disabled && isToday ? 1.5 : 1,
-                          borderColor: isStart || isEnd ? COLORS.black : !selected && !item.disabled && isToday ? COLORS.gold : isAvailable ? "rgba(22,163,74,0.25)" : "rgba(220,38,38,0.2)",
-                          opacity: item.disabled ? 0.45 : 1,
+                          fontSize: 15,
+                          color: isStart || isEnd ? COLORS.gold : item.disabled ? COLORS.gray300 : isAvailable ? COLORS.success : COLORS.danger,
                         }}
                       >
-                        <AppText
-                          family="sora"
-                          weight={isStart || isEnd ? "bold" : selected ? "semibold" : "regular"}
-                          style={{
-                            fontSize: 15,
-                            color: isStart || isEnd ? COLORS.gold : item.disabled ? COLORS.gray300 : isAvailable ? COLORS.success : COLORS.danger,
-                          }}
-                        >
-                          {item.day}
-                        </AppText>
-                        {isToday && !isStart && !isEnd ? (
-                          <View style={{ marginTop: 4, width: 5, height: 5, borderRadius: 999, backgroundColor: isAvailable ? COLORS.success : COLORS.danger }} />
-                        ) : null}
-                      </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
+                        {item.day}
+                      </AppText>
+                      {isToday && !isStart && !isEnd ? (
+                        <View style={{ marginTop: 4, width: 5, height: 5, borderRadius: 999, backgroundColor: isAvailable ? COLORS.success : COLORS.danger }} />
+                      ) : null}
+                    </Pressable>
+                  </View>
+                );
+              })}
             </View>
-          ))}
+          </View>
         </View>
 
         {availabilityLoading ? <LoadingBlock label={copy.loading} /> : null}
@@ -359,13 +349,11 @@ export function DeliveryScreen({
   bookingRange,
   deliveryAddress,
   deliverySlot,
-  deliveryZoneId,
   navigation,
   scooter,
   selectedAddons,
   setDeliveryAddress,
   setDeliverySlot,
-  setDeliveryZoneId,
   setSelectedAddons,
   quote,
   quoteError,
@@ -374,7 +362,7 @@ export function DeliveryScreen({
   const insets = useSafeAreaInsets();
   const copy = app.copy;
   const rentalDays = getBookingDuration(bookingRange);
-  const zone = getZoneById(app.zones, deliveryZoneId);
+  const zone = getDefaultZone(app.zones);
   const summary = buildLocalBookingPreview({
     addons: app.addons,
     currency: app.currency,
@@ -408,26 +396,6 @@ export function DeliveryScreen({
         </View>
 
         <LabeledInput label={copy.address} value={deliveryAddress} onChangeText={setDeliveryAddress} placeholder={copy.addressPlaceholder} style={{ marginBottom: 24 }} />
-
-        <SectionHeader title={copy.deliveryZone} />
-        <View style={{ gap: 10, marginBottom: 24 }}>
-          {app.zones.map((item) => {
-            const active = String(item.id) === String(deliveryZoneId);
-            return (
-              <Pressable key={item.id} onPress={() => setDeliveryZoneId(item.id)} style={{ borderRadius: 14, borderWidth: 1.5, borderColor: active ? COLORS.gold : COLORS.gray200, backgroundColor: active ? "rgba(255,215,0,0.06)" : COLORS.white, paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", alignItems: "center" }}>
-                <View>
-                  <AppText family="sora" weight="bold" style={{ fontSize: 15, color: COLORS.black, marginBottom: 3 }}>
-                    {item.name}
-                  </AppText>
-                  <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500 }}>
-                    {`${item.timeMinutes} min · ${item.freeDelivery ? copy.free : formatConvertedMoney(item.deliveryFeeUSD, "USD", app.currency, app.language)}`}
-                  </AppText>
-                </View>
-                {active ? <Ionicons name="checkmark-circle" size={20} color={COLORS.gold} style={{ marginLeft: "auto" }} /> : null}
-              </Pressable>
-            );
-          })}
-        </View>
 
         <SectionHeader title={copy.preferredTime} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 24 }}>
@@ -478,11 +446,11 @@ export function DeliveryScreen({
           ) : null}
           <SummaryRow label={copy.rental} value={formatMoney(summary.rentalCost, summary.currency, app.language)} />
           <SummaryRow label={copy.addons} value={formatMoney(summary.addonsTotal, summary.currency, app.language)} />
-          <SummaryRow label={copy.deliveryZone} value={summary.deliveryFee === 0 ? copy.free : formatMoney(summary.deliveryFee, summary.currency, app.language)} />
+          <SummaryRow label={copy.delivery} value={summary.deliveryFee === 0 ? copy.free : formatMoney(summary.deliveryFee, summary.currency, app.language)} />
           <SummaryRow label={copy.total} value={formatMoney(summary.total, summary.currency, app.language)} border />
         </View>
 
-        <PrimaryButton variant="dark" onPress={navigation.continueToPayment} disabled={!deliveryAddress.trim() || !deliveryZoneId || quoteLoading || !quote}>
+        <PrimaryButton variant="dark" onPress={navigation.continueToPayment} disabled={!deliveryAddress.trim() || quoteLoading || !quote}>
           {copy.continueToPayment} →
         </PrimaryButton>
       </PageContent>
@@ -496,7 +464,6 @@ export function PaymentScreen({
   bookingContact,
   deliveryAddress,
   deliverySlot,
-  deliveryZoneId,
   navigation,
   onUpdateBookingContact,
   paymentMethod,
@@ -516,7 +483,7 @@ export function PaymentScreen({
   const [cashConfirmed, setCashConfirmed] = useState(false);
   const [localError, setLocalError] = useState("");
   const copy = app.copy;
-  const zone = getZoneById(app.zones, deliveryZoneId);
+  const zone = getDefaultZone(app.zones);
   const summary = buildLocalBookingPreview({
     addons: app.addons,
     currency: app.currency,
@@ -759,7 +726,7 @@ export function PaymentScreen({
             </AppText>
             <View style={{ borderRadius: 14, backgroundColor: COLORS.gray100, padding: 14, marginBottom: 14 }}>
               <SummaryRow label={copy.address} value={deliveryAddress || "-"} />
-              <SummaryRow label={copy.deliveryZone} value={`${zone?.name || "-"} · ${deliverySlot}`} border />
+              <SummaryRow label={copy.preferredTime} value={deliverySlot} border />
             </View>
             <Pressable
               onPress={() => {
