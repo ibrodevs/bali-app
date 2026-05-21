@@ -1,15 +1,116 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Modal, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatConvertedMoney, getScooterGallery, vehicleMatchesCategory, vehicleMatchesSearch } from "../data";
-import { COLORS } from "../theme";
+import { COLORS, SHADOWS } from "../theme";
 import { AppText, Badge, BottomNav, CenteredScrollView, FilterPill, GlassCircleButton, PageContent, PrimaryButton, ResolvedIcon, ScooterThumb, SearchBar, Stars } from "../components";
 import { EmptyCard, FleetCard, SectionHeader } from "./shared";
 
-export function HomeScreen({ app, navigation }) {
+function PreferenceOverlay({ app, onClose, onSelect, preferenceError, preferenceSaving, type }) {
+  if (!type) {
+    return null;
+  }
+
+  const title = type === "language" ? app.copy.language : app.copy.currency;
+  const items = type === "language" ? app.languages : app.currencies;
+
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.18)" }}>
+        <View style={{ paddingHorizontal: 20, paddingTop: 112 }}>
+          <Pressable onPress={() => {}} style={{ borderRadius: 22, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray200, padding: 12, ...SHADOWS.card, elevation: 12 }}>
+            <AppText family="sora" weight="bold" style={{ fontSize: 16, color: COLORS.black, marginBottom: 10 }}>
+              {title}
+            </AppText>
+            <View style={{ gap: 8, flexDirection: type === "currency" ? "row" : "column", flexWrap: "wrap" }}>
+              {items.map((item) => {
+                const key = type === "language" ? item.api_code : item.code;
+                const active = type === "language" ? app.language === item.api_code : app.currency === item.code;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => onSelect(key)}
+                    style={{
+                      width: type === "currency" ? "31%" : "100%",
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: active ? COLORS.gold : COLORS.gray200,
+                      backgroundColor: active ? "rgba(255,215,0,0.08)" : COLORS.white,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                    }}
+                  >
+                    <AppText family="sora" weight="semibold" style={{ fontSize: 14, color: COLORS.black }}>
+                      {type === "language" ? item.label : item.code}
+                    </AppText>
+                    <AppText family="inter" style={{ fontSize: 11, color: COLORS.gray500, marginTop: 2 }}>
+                      {type === "language" ? item.api_code.toUpperCase() : item.symbol}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {preferenceSaving ? (
+              <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500, marginTop: 10 }}>
+                {app.copy.loading}
+              </AppText>
+            ) : null}
+            {preferenceError ? (
+              <AppText family="inter" style={{ fontSize: 12, color: COLORS.danger, marginTop: 10 }}>
+                {preferenceError}
+              </AppText>
+            ) : null}
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function InlinePreferenceChips({ app, expandedPreference, onChangeCurrency, onChangeLanguage, preferenceError, preferenceSaving, setExpandedPreference }) {
+  async function handlePreferenceChange(type, value) {
+    const applyChange = type === "language" ? onChangeLanguage : onChangeCurrency;
+    if (!applyChange) {
+      return;
+    }
+
+    const success = await applyChange(value);
+    if (success) {
+      setExpandedPreference(null);
+    }
+  }
+
+  return (
+    <View style={{ width: "100%" }}>
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        <Pressable onPress={() => setExpandedPreference((current) => (current === "language" ? null : "language"))} style={{ borderRadius: 999, backgroundColor: COLORS.gray100, paddingHorizontal: 12, paddingVertical: 8 }}>
+          <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
+            {`${app.copy.language} · ${app.languageLabel}`}
+          </AppText>
+        </Pressable>
+        <Pressable onPress={() => setExpandedPreference((current) => (current === "currency" ? null : "currency"))} style={{ borderRadius: 999, backgroundColor: COLORS.gray100, paddingHorizontal: 12, paddingVertical: 8 }}>
+          <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
+            {`${app.copy.currency} · ${app.currency}`}
+          </AppText>
+        </Pressable>
+      </View>
+      <PreferenceOverlay
+        app={app}
+        onClose={() => setExpandedPreference(null)}
+        onSelect={(value) => handlePreferenceChange(expandedPreference, value)}
+        preferenceError={preferenceError}
+        preferenceSaving={preferenceSaving}
+        type={expandedPreference}
+      />
+    </View>
+  );
+}
+
+export function HomeScreen({ app, navigation, onChangeCurrency, onChangeLanguage, preferenceError, preferenceSaving }) {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [expandedPreference, setExpandedPreference] = useState(null);
   const deferredSearch = useDeferredValue(search);
   const { copy, labels, profile, fleet, bookings, language } = app;
 
@@ -30,18 +131,15 @@ export function HomeScreen({ app, navigation }) {
               <AppText family="sora" weight="extrabold" style={{ fontSize: 22, color: COLORS.black, letterSpacing: -0.8, marginBottom: 10 }}>
                 {headerTitle}
               </AppText>
-              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                <Pressable onPress={() => navigation.push("language")} style={{ borderRadius: 999, backgroundColor: COLORS.gray100, paddingHorizontal: 12, paddingVertical: 8 }}>
-                  <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
-                    {`${copy.language} · ${app.languageLabel}`}
-                  </AppText>
-                </Pressable>
-                <Pressable onPress={() => navigation.push("settings")} style={{ borderRadius: 999, backgroundColor: COLORS.gray100, paddingHorizontal: 12, paddingVertical: 8 }}>
-                  <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
-                    {`${copy.currency} · ${app.currency}`}
-                  </AppText>
-                </Pressable>
-              </View>
+              <InlinePreferenceChips
+                app={app}
+                expandedPreference={expandedPreference}
+                onChangeCurrency={onChangeCurrency}
+                onChangeLanguage={onChangeLanguage}
+                preferenceError={preferenceError}
+                preferenceSaving={preferenceSaving}
+                setExpandedPreference={setExpandedPreference}
+              />
             </View>
             <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center" }}>
               <AppText family="sora" weight="extrabold" style={{ fontSize: 16, color: COLORS.black }}>
@@ -259,14 +357,6 @@ export function DetailScreen({ app, navigation, scooter }) {
                   {value}
                 </AppText>
               </View>
-            ))}
-          </View>
-          <SectionHeader title={copy.keyFeatures} />
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
-            {(scooter.features || []).map((feature) => (
-              <Badge key={feature} variant="black" style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
-                {feature}
-              </Badge>
             ))}
           </View>
           {scooter.rentalTerms ? (

@@ -899,8 +899,16 @@ export default function App() {
   }
 
   async function saveProfileSettings() {
-    if (!session?.access || !profile) {
-      return;
+    await persistProfileSettings({
+      profileSnapshot: profile,
+      languageValue: language,
+      currencyValue: currency,
+    });
+  }
+
+  async function persistProfileSettings({ profileSnapshot, languageValue, currencyValue }) {
+    if (!session?.access || !profileSnapshot) {
+      return null;
     }
 
     setSettingsSaving(true);
@@ -909,20 +917,72 @@ export default function App() {
       const nextProfile = await apiRequest("/profile/", {
         method: "PATCH",
         token: session.access,
-        language,
+        language: languageValue,
         body: {
-          full_name: profile.full_name,
-          phone: profile.phone,
-          country: profile.country,
-          language,
-          currency,
+          full_name: profileSnapshot.full_name || "",
+          phone: profileSnapshot.phone || "",
+          country: profileSnapshot.country || "",
+          language: languageValue,
+          currency: currencyValue,
         },
       });
       setProfile(nextProfile);
+      return nextProfile;
     } catch (error) {
       setSettingsError(getLocalizedErrorMessage(error));
+      throw error;
     } finally {
       setSettingsSaving(false);
+    }
+  }
+
+  async function handleInlineLanguageChange(nextLanguage) {
+    if (!nextLanguage || nextLanguage === language) {
+      return true;
+    }
+
+    const previousLanguage = language;
+    setLanguage(nextLanguage);
+
+    if (!session?.access || !profile) {
+      return true;
+    }
+
+    try {
+      await persistProfileSettings({
+        profileSnapshot: profile,
+        languageValue: nextLanguage,
+        currencyValue: currency,
+      });
+      return true;
+    } catch {
+      setLanguage(previousLanguage);
+      return false;
+    }
+  }
+
+  async function handleInlineCurrencyChange(nextCurrency) {
+    if (!nextCurrency || nextCurrency === currency) {
+      return true;
+    }
+
+    const previousCurrency = currency;
+    setCurrency(nextCurrency);
+
+    if (!session?.access || !profile) {
+      return true;
+    }
+
+    try {
+      await persistProfileSettings({
+        profileSnapshot: profile,
+        languageValue: language,
+        currencyValue: nextCurrency,
+      });
+      return true;
+    } catch {
+      setCurrency(previousCurrency);
+      return false;
     }
   }
 
@@ -964,6 +1024,7 @@ export default function App() {
     fleet,
     language,
     languageLabel: currentLanguageOption?.label || language.toUpperCase(),
+    languages: bootstrap?.languages || [],
     labels,
     notifications,
     profile,
@@ -1111,7 +1172,16 @@ export default function App() {
       );
       break;
     case "home":
-      screen = <HomeScreen app={app} navigation={navigation} />;
+      screen = (
+        <HomeScreen
+          app={app}
+          navigation={navigation}
+          preferenceError={settingsError}
+          preferenceSaving={settingsSaving}
+          onChangeCurrency={handleInlineCurrencyChange}
+          onChangeLanguage={handleInlineLanguageChange}
+        />
+      );
       break;
     case "fleet":
       screen = <FleetScreen app={app} navigation={navigation} />;
@@ -1194,6 +1264,10 @@ export default function App() {
         <ProfileScreen
           app={app}
           navigation={navigation}
+          preferenceError={settingsError}
+          preferenceSaving={settingsSaving}
+          onChangeCurrency={handleInlineCurrencyChange}
+          onChangeLanguage={handleInlineLanguageChange}
           onOpenSupportChat={async () => {
             const thread = await ensureSupportThread();
             if (thread) {

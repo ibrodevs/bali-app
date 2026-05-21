@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -86,9 +86,79 @@ export function BookingsScreen({ app, navigation, onOpenBookingStatus }) {
   );
 }
 
-export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
+function PreferenceOverlay({
+  app,
+  danger = false,
+  onClose,
+  onSelect,
+  saving = false,
+  type,
+  error,
+}) {
+  if (!type) {
+    return null;
+  }
+
+  const title = type === "language" ? app.copy.language : app.copy.currency;
+  const items = type === "language" ? app.languages : app.currencies;
+
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.18)" }}>
+        <View style={{ paddingHorizontal: 20, paddingTop: 220 }}>
+          <Pressable onPress={() => {}} style={{ borderRadius: 22, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray200, padding: 12, ...SHADOWS.card, elevation: 12 }}>
+            <AppText family="sora" weight="bold" style={{ fontSize: 16, color: COLORS.black, marginBottom: 10 }}>
+              {title}
+            </AppText>
+            <View style={{ gap: 8, flexDirection: type === "currency" ? "row" : "column", flexWrap: "wrap" }}>
+              {items.map((item) => {
+                const key = type === "language" ? item.api_code : item.code;
+                const active = type === "language" ? app.language === item.api_code : app.currency === item.code;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => onSelect(key)}
+                    style={{
+                      width: type === "currency" ? "31%" : "100%",
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: active ? COLORS.gold : COLORS.gray200,
+                      backgroundColor: active ? "rgba(255,215,0,0.08)" : COLORS.white,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                    }}
+                  >
+                    <AppText family="sora" weight="semibold" style={{ fontSize: 14, color: COLORS.black }}>
+                      {type === "language" ? item.label : item.code}
+                    </AppText>
+                    <AppText family="inter" style={{ fontSize: 11, color: COLORS.gray500, marginTop: 2 }}>
+                      {type === "language" ? item.api_code.toUpperCase() : item.symbol}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {saving ? (
+              <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500, marginTop: 10 }}>
+                {app.copy.loading}
+              </AppText>
+            ) : null}
+            {error ? (
+              <AppText family="inter" style={{ fontSize: 12, color: COLORS.danger, marginTop: 10 }}>
+                {error}
+              </AppText>
+            ) : null}
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+export function ProfileScreen({ app, navigation, onChangeCurrency, onChangeLanguage, onOpenSupportChat, preferenceError, preferenceSaving }) {
   const insets = useSafeAreaInsets();
   const { copy, profile, bookings, notifications, languageLabel } = app;
+  const [expandedPreference, setExpandedPreference] = useState(null);
   const completedCount = bookings.filter((item) => item.status === "completed").length;
   const primaryThread = app.chatThreads[0] || null;
   const isSignedIn = app.sessionActive;
@@ -105,8 +175,6 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
     ? [
         { icon: "document-text-outline", label: copy.myBookings, action: () => navigation.toTab("bookings") },
         { icon: "notifications-outline", label: `${copy.notifications} · ${notifications.filter((item) => !item.is_read).length}`, action: () => navigation.push("notifications") },
-        { icon: "globe-outline", label: `${copy.language} · ${languageLabel}`, action: () => navigation.push("language") },
-        { icon: "cash-outline", label: `${copy.currency} · ${app.currency}`, action: () => navigation.push("settings") },
         { icon: "settings-outline", label: copy.accountSettings, action: () => navigation.push("settings") },
         { icon: "help-circle-outline", label: copy.helpSupport, action: () => navigation.push("support") },
         { icon: "log-out-outline", label: copy.signOut, action: navigation.signOut, danger: true },
@@ -114,10 +182,19 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
     : [
         { icon: "person-outline", label: copy.signIn, action: () => navigation.push("login") },
         { icon: "person-add-outline", label: copy.createAccount, action: () => navigation.push("login") },
-        { icon: "globe-outline", label: `${copy.language} · ${languageLabel}`, action: () => navigation.push("language") },
-        { icon: "cash-outline", label: `${copy.currency} · ${app.currency}`, action: () => navigation.push("settings") },
-        { icon: "settings-outline", label: copy.accountSettings, action: () => navigation.push("settings") },
       ];
+
+  async function handlePreferenceChange(type, value) {
+    const applyChange = type === "language" ? onChangeLanguage : onChangeCurrency;
+    if (!applyChange) {
+      return;
+    }
+
+    const success = await applyChange(value);
+    if (success) {
+      setExpandedPreference(null);
+    }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.gray100 }}>
@@ -175,6 +252,20 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
               {primaryThread?.last_message?.text || (isSignedIn ? copy.supportHint : copy.registerHint)}
             </AppText>
           </Pressable>
+          <Pressable onPress={() => setExpandedPreference((current) => (current === "language" ? null : "language"))} style={{ borderRadius: 14, backgroundColor: COLORS.white, paddingHorizontal: 18, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Ionicons name="globe-outline" size={20} color={COLORS.black} />
+            <AppText family="inter" weight="medium" style={{ flex: 1, fontSize: 15, color: COLORS.black }}>
+              {`${copy.language} · ${languageLabel}`}
+            </AppText>
+            {preferenceSaving && expandedPreference === "language" ? <ActivityIndicator size="small" color={COLORS.gray500} /> : <Ionicons name="chevron-forward" size={16} color={COLORS.gray300} />}
+          </Pressable>
+          <Pressable onPress={() => setExpandedPreference((current) => (current === "currency" ? null : "currency"))} style={{ borderRadius: 14, backgroundColor: COLORS.white, paddingHorizontal: 18, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Ionicons name="cash-outline" size={20} color={COLORS.black} />
+            <AppText family="inter" weight="medium" style={{ flex: 1, fontSize: 15, color: COLORS.black }}>
+              {`${copy.currency} · ${app.currency}`}
+            </AppText>
+            {preferenceSaving && expandedPreference === "currency" ? <ActivityIndicator size="small" color={COLORS.gray500} /> : <Ionicons name="chevron-forward" size={16} color={COLORS.gray300} />}
+          </Pressable>
           {profileActions.map((item) => (
             <Pressable key={item.label} onPress={item.action} style={{ borderRadius: 14, backgroundColor: COLORS.white, paddingHorizontal: 18, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 14 }}>
               <Ionicons name={item.icon} size={20} color={item.danger ? COLORS.danger : COLORS.black} />
@@ -186,6 +277,14 @@ export function ProfileScreen({ app, navigation, onOpenSupportChat }) {
           ))}
         </PageContent>
       </CenteredScrollView>
+      <PreferenceOverlay
+        app={app}
+        error={preferenceError}
+        onClose={() => setExpandedPreference(null)}
+        onSelect={(value) => handlePreferenceChange(expandedPreference, value)}
+        saving={preferenceSaving}
+        type={expandedPreference}
+      />
       <BottomNav active="profile" onChange={navigation.toTab} labels={{ home: copy.home, fleet: copy.fleet, bookings: copy.bookings, profile: copy.profile }} />
     </View>
   );
@@ -296,15 +395,12 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
           <AppText family="inter" style={{ fontSize: 14, color: COLORS.gray700, lineHeight: 22, marginBottom: 14 }}>
             {copy.supportHint}
           </AppText>
-          <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flexDirection: "row" }}>
             <Pressable onPress={onStartThread} style={{ flex: 1, minHeight: 48, borderRadius: 16, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center" }}>
               <AppText family="inter" weight="bold" style={{ fontSize: 14, color: COLORS.white }}>
                 {copy.openLiveChat}
               </AppText>
             </Pressable>
-            <View style={{ width: 48, borderRadius: 16, backgroundColor: "#EAF3FF", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="call-outline" size={18} color="#3797F0" />
-            </View>
           </View>
         </View>
 

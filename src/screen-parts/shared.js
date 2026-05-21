@@ -73,25 +73,6 @@ export function ScreenHeader({ title, onBack, rightAction }) {
   );
 }
 
-export function FeaturePill({ children, dark = false }) {
-  return (
-    <View
-      style={{
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 999,
-        backgroundColor: dark ? "rgba(255,255,255,0.08)" : COLORS.gray100,
-        borderWidth: 1,
-        borderColor: dark ? "rgba(255,255,255,0.08)" : COLORS.gray200,
-      }}
-    >
-      <AppText family="inter" weight="semibold" style={{ fontSize: 12, color: dark ? COLORS.white : COLORS.gray700 }}>
-        {children}
-      </AppText>
-    </View>
-  );
-}
-
 export function FleetCard({ actionLabel, copy, currency, language, onPress, scooter }) {
   return (
     <Pressable
@@ -140,14 +121,6 @@ export function FleetCard({ actionLabel, copy, currency, language, onPress, scoo
         <AppText family="inter" style={{ fontSize: 13, lineHeight: 22, color: COLORS.gray500, marginBottom: 14 }}>
           {scooter.description}
         </AppText>
-
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-          <FeaturePill>{scooter.engine}</FeaturePill>
-          {(scooter.features || []).slice(0, 2).map((feature) => (
-            <FeaturePill key={feature}>{feature}</FeaturePill>
-          ))}
-        </View>
-
         <View style={{ minHeight: 50, borderRadius: 16, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
           <AppText family="inter" weight="bold" style={{ fontSize: 14, color: COLORS.white }}>
             {actionLabel}
