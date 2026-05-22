@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -166,6 +166,7 @@ export default function App() {
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
+  const [promoCode, setPromoCode] = useState("");
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const [supportError, setSupportError] = useState("");
   const [threadMessages, setThreadMessages] = useState([]);
@@ -177,6 +178,7 @@ export default function App() {
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   const route = stack[stack.length - 1];
+  const normalizedPromoCode = useDeferredValue(promoCode.trim().toUpperCase());
   const getLocalizedErrorMessage = (error) => getErrorMessage(error, translate(language, "somethingWentWrong"));
 
   useEffect(() => {
@@ -314,7 +316,34 @@ export default function App() {
     setThreadMessage("");
     setBookingContact(initialBookingContact());
     setQuote(null);
+    setPromoCode("");
     setStack([{ name: nextRoute }]);
+  }
+
+  async function refreshChatSummary(accessToken = session?.access) {
+    if (!accessToken) {
+      return [];
+    }
+
+    const [threadsData, quickRepliesData] = await Promise.all([
+      apiRequest("/chat/threads/", { token: accessToken, language }),
+      apiRequest("/chat/quick-replies/?is_active=true", { token: accessToken, language }),
+    ]);
+    const nextThreads = unwrapList(threadsData);
+    setChatThreads(nextThreads);
+    setQuickReplies(unwrapList(quickRepliesData));
+    return nextThreads;
+  }
+
+  async function refreshNotifications(accessToken = session?.access) {
+    if (!accessToken) {
+      return [];
+    }
+
+    const notificationsData = await apiRequest("/notifications/", { token: accessToken, language });
+    const nextNotifications = unwrapList(notificationsData);
+    setNotifications(nextNotifications);
+    return nextNotifications;
   }
 
   async function loadPrivateData(accessToken = session?.access, options = {}) {
@@ -415,6 +444,7 @@ export default function App() {
           deliverySlot,
           paymentMethod,
           currency,
+          promoCode: normalizedPromoCode,
         }),
       },
     })
@@ -437,7 +467,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [bookingRange, currency, deliveryAddress, deliverySlot, deliveryZone, language, paymentMethod, route.name, scooter, selectedAddons]);
+  }, [bookingRange, currency, deliveryAddress, deliverySlot, deliveryZone, language, normalizedPromoCode, paymentMethod, route.name, scooter, selectedAddons]);
 
   function getPrimarySupportThread(threads = chatThreads) {
     return threads.find((item) => item.status === "open") || threads[0] || null;
@@ -574,7 +604,7 @@ export default function App() {
       language,
       body: { title: translate(language, "supportChat") },
     });
-    await loadPrivateData(session.access, { background: true });
+    await refreshChatSummary(session.access);
     return thread;
   }
 
@@ -592,7 +622,7 @@ export default function App() {
         title: `${translate(language, "supportChat")} #${chatThreads.length + 1}`,
       },
     });
-    await loadPrivateData(session.access, { background: true });
+    await refreshChatSummary(session.access);
     return thread;
   }
 
@@ -652,6 +682,7 @@ export default function App() {
         deliverySlot,
         paymentMethod,
         currency,
+        promoCode: normalizedPromoCode,
       });
 
       let accessToken = session?.access || null;
@@ -729,6 +760,7 @@ export default function App() {
         }
       }
 
+      setPromoCode("");
       setStack([{ name: "confirmed", params: { booking: finalBooking } }]);
     } catch (error) {
       setQuoteError(getLocalizedErrorMessage(error));
@@ -818,6 +850,34 @@ export default function App() {
     }
   }
 
+  async function markSupportThreadRead(threadId, accessToken = session?.access) {
+    if (!accessToken || !threadId) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/chat/threads/${threadId}/mark-support-replies-read/`, {
+        method: "POST",
+        token: accessToken,
+        language,
+      });
+      setChatThreads((current) =>
+        current.map((item) => (item.id === threadId ? { ...item, has_unread_support_reply: false } : item)),
+      );
+      setNotifications((current) =>
+        current.map((item) => {
+          const itemThreadId = item?.data?.thread_id || item?.data_json?.thread_id;
+          if (!item.is_read && item.type === "chat_message_from_support" && itemThreadId === threadId) {
+            return { ...item, is_read: true };
+          }
+          return item;
+        }),
+      );
+    } catch {
+      // no-op
+    }
+  }
+
   async function openThread(threadId) {
     if (!session?.access) {
       setStack([{ name: "login" }]);
@@ -827,6 +887,8 @@ export default function App() {
     setSupportError("");
     const messages = await refreshThreadMessages(threadId, session.access);
     if (messages) {
+      await markSupportThreadRead(threadId, session.access);
+      await refreshChatSummary(session.access).catch(() => {});
       setStack((current) => [...current, { name: "thread", params: { threadId } }]);
     }
   }
@@ -868,7 +930,7 @@ export default function App() {
         },
       });
       await refreshThreadMessages(threadId, session.access, { background: true });
-      await loadPrivateData(session.access, { background: true });
+      await refreshChatSummary(session.access);
     } catch (error) {
       setThreadMessages((current) => current.filter((item) => !item.pending));
       setThreadError(getLocalizedErrorMessage(error));
@@ -1028,22 +1090,24 @@ export default function App() {
     labels,
     notifications,
     profile,
+    promoCode: normalizedPromoCode,
     quickReplies,
     sessionActive: Boolean(session?.access),
     zones,
   };
 
   useEffect(() => {
-    if (!session?.access || !["support", "thread"].includes(route.name)) {
+    if (!session?.access || !["profile", "support", "thread"].includes(route.name)) {
       return;
     }
 
     const intervalId = setInterval(() => {
-      loadPrivateData(session.access, { background: true });
+      refreshNotifications(session.access).catch(() => {});
+      refreshChatSummary(session.access).catch(() => {});
       if (route.name === "thread" && route.params?.threadId) {
         refreshThreadMessages(route.params.threadId, session.access, { background: true });
       }
-    }, 10000);
+    }, 5000);
 
     return () => clearInterval(intervalId);
   }, [language, route.name, route.params?.threadId, session?.access]);
@@ -1064,6 +1128,7 @@ export default function App() {
           setQuoteError(translate(language, "scooterUnavailable"));
           return;
         }
+        setPromoCode("");
         setStack((current) => [...current, { name: "booking-dates" }]);
       },
       continueToDelivery: () => setStack((current) => [...current, { name: "delivery" }]),
@@ -1213,9 +1278,11 @@ export default function App() {
           setDeliveryAddress={setDeliveryAddress}
           setDeliverySlot={setDeliverySlot}
           setSelectedAddons={setSelectedAddons}
+          promoCode={promoCode}
           quote={quote}
           quoteError={quoteError}
           quoteLoading={quoteLoading}
+          setPromoCode={setPromoCode}
         />
       );
       break;
@@ -1236,6 +1303,8 @@ export default function App() {
           scooter={scooter}
           selectedAddons={selectedAddons}
           setPaymentMethod={setPaymentMethod}
+          promoCode={promoCode}
+          setPromoCode={setPromoCode}
           submitting={bookingSubmitting}
         />
       );

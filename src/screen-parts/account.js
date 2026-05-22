@@ -155,12 +155,11 @@ function PreferenceOverlay({
   );
 }
 
-export function ProfileScreen({ app, navigation, onChangeCurrency, onChangeLanguage, onOpenSupportChat, preferenceError, preferenceSaving }) {
+export function ProfileScreen({ app, navigation, onChangeCurrency, onChangeLanguage, preferenceError, preferenceSaving }) {
   const insets = useSafeAreaInsets();
   const { copy, profile, bookings, notifications, languageLabel } = app;
   const [expandedPreference, setExpandedPreference] = useState(null);
   const completedCount = bookings.filter((item) => item.status === "completed").length;
-  const primaryThread = app.chatThreads[0] || null;
   const isSignedIn = app.sessionActive;
   const quickStats = isSignedIn
     ? [
@@ -231,27 +230,6 @@ export function ProfileScreen({ app, navigation, onChangeCurrency, onChangeLangu
           </PageContent>
         </View>
         <PageContent style={{ paddingHorizontal: 20, paddingTop: 16, gap: 10 }}>
-          <Pressable onPress={isSignedIn ? onOpenSupportChat : () => navigation.push("login")} style={{ borderRadius: 20, backgroundColor: COLORS.black, padding: 18, marginBottom: 4 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(255,215,0,0.16)", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.gold} />
-                </View>
-                <View>
-                  <AppText family="sora" weight="bold" style={{ fontSize: 16, color: COLORS.white }}>
-                    {copy.supportChat}
-                  </AppText>
-                  <AppText family="inter" style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>
-                    {copy.openLiveChat}
-                  </AppText>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </View>
-            <AppText family="inter" style={{ fontSize: 13, lineHeight: 21, color: "rgba(255,255,255,0.72)" }}>
-              {primaryThread?.last_message?.text || (isSignedIn ? copy.supportHint : copy.registerHint)}
-            </AppText>
-          </Pressable>
           <Pressable onPress={() => setExpandedPreference((current) => (current === "language" ? null : "language"))} style={{ borderRadius: 14, backgroundColor: COLORS.white, paddingHorizontal: 18, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 14 }}>
             <Ionicons name="globe-outline" size={20} color={COLORS.black} />
             <AppText family="inter" weight="medium" style={{ flex: 1, fontSize: 15, color: COLORS.black }}>
@@ -460,7 +438,13 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
                       <AppText numberOfLines={1} family="inter" style={{ flex: 1, fontSize: 13, color: "#8E8E93", lineHeight: 18 }}>
                         {latestMessage?.text || copy.supportHint}
                       </AppText>
-                      {index === 0 ? <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: "#3797F0" }} /> : null}
+                      {thread.has_unread_support_reply ? (
+                        <Badge variant="gold">{copy.newReply}</Badge>
+                      ) : latestMessage?.is_from_support ? (
+                        <Badge variant="green">{copy.supportReplied}</Badge>
+                      ) : index === 0 ? (
+                        <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: "#3797F0" }} />
+                      ) : null}
                     </View>
                   </View>
                 </Pressable>
@@ -566,6 +550,19 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
               <AppText family="inter" weight="medium" style={{ fontSize: 12, color: "#8E8E93" }}>
                 Online
               </AppText>
+              {thread?.has_unread_support_reply ? (
+                <View style={{ borderRadius: 999, backgroundColor: COLORS.gold, paddingHorizontal: 8, paddingVertical: 3 }}>
+                  <AppText family="inter" weight="bold" style={{ fontSize: 10, color: COLORS.black }}>
+                    {copy.newReply}
+                  </AppText>
+                </View>
+              ) : thread?.last_message?.is_from_support ? (
+                <View style={{ borderRadius: 999, backgroundColor: "rgba(22,163,74,0.14)", paddingHorizontal: 8, paddingVertical: 3 }}>
+                  <AppText family="inter" weight="bold" style={{ fontSize: 10, color: "#16A34A" }}>
+                    {copy.supportReplied}
+                  </AppText>
+                </View>
+              ) : null}
             </View>
           </View>
           <Pressable onPress={onStartThread} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F7F7F8", alignItems: "center", justifyContent: "center" }}>

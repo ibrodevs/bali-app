@@ -350,11 +350,13 @@ export function DeliveryScreen({
   deliveryAddress,
   deliverySlot,
   navigation,
+  promoCode,
   scooter,
   selectedAddons,
   setDeliveryAddress,
   setDeliverySlot,
   setSelectedAddons,
+  setPromoCode,
   quote,
   quoteError,
   quoteLoading,
@@ -396,6 +398,21 @@ export function DeliveryScreen({
         </View>
 
         <LabeledInput label={copy.address} value={deliveryAddress} onChangeText={setDeliveryAddress} placeholder={copy.addressPlaceholder} style={{ marginBottom: 24 }} />
+
+        <LabeledInput
+          label={copy.promoCode}
+          value={promoCode}
+          onChangeText={(value) => setPromoCode(value.toUpperCase().replace(/\s+/g, ""))}
+          placeholder={copy.promoHint}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          style={{ marginBottom: 12 }}
+        />
+        {promoCode.trim() && !quoteLoading ? (
+          <AppText family="inter" style={{ fontSize: 12, color: summary.discountAmount > 0 ? COLORS.success : COLORS.danger, marginBottom: 20 }}>
+            {summary.discountAmount > 0 ? copy.promoApplied : copy.promoInvalid}
+          </AppText>
+        ) : null}
 
         <SectionHeader title={copy.preferredTime} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 24 }}>
@@ -447,6 +464,9 @@ export function DeliveryScreen({
           <SummaryRow label={copy.rental} value={formatMoney(summary.rentalCost, summary.currency, app.language)} />
           <SummaryRow label={copy.addons} value={formatMoney(summary.addonsTotal, summary.currency, app.language)} />
           <SummaryRow label={copy.delivery} value={summary.deliveryFee === 0 ? copy.free : formatMoney(summary.deliveryFee, summary.currency, app.language)} />
+          {summary.discountAmount > 0 ? (
+            <SummaryRow label={promoCode.trim() ? `${copy.discountLabel} (${promoCode.trim().toUpperCase()})` : copy.discountLabel} value={`-${formatMoney(summary.discountAmount, summary.currency, app.language)}`} />
+          ) : null}
           <SummaryRow label={copy.total} value={formatMoney(summary.total, summary.currency, app.language)} border />
         </View>
 
@@ -467,12 +487,14 @@ export function PaymentScreen({
   navigation,
   onUpdateBookingContact,
   paymentMethod,
+  promoCode,
   quote,
   quoteError,
   quoteLoading,
   scooter,
   selectedAddons,
   setPaymentMethod,
+  setPromoCode,
   submitting,
 }) {
   const insets = useSafeAreaInsets();
@@ -598,6 +620,9 @@ export function PaymentScreen({
             <SummaryRow label={copy.rental} value={formatMoney(summary.rentalCost, summary.currency, app.language)} />
             <SummaryRow label={copy.addons} value={formatMoney(summary.addonsTotal, summary.currency, app.language)} />
             <SummaryRow label={copy.delivery} value={summary.deliveryFee === 0 ? copy.free : formatMoney(summary.deliveryFee, summary.currency, app.language)} />
+            {summary.discountAmount > 0 ? (
+              <SummaryRow label={promoCode.trim() ? `${copy.discountLabel} (${promoCode.trim().toUpperCase()})` : copy.discountLabel} value={`-${formatMoney(summary.discountAmount, summary.currency, app.language)}`} />
+            ) : null}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.gray200 }}>
               <AppText family="sora" weight="bold" style={{ fontSize: 18, color: COLORS.black }}>
                 {copy.total}
@@ -609,6 +634,25 @@ export function PaymentScreen({
               </View>
             </View>
           </View>
+        </View>
+
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: COLORS.gray200, backgroundColor: COLORS.white, padding: 18, marginBottom: 20 }}>
+          <LabeledInput
+            label={copy.promoCode}
+            value={promoCode}
+            onChangeText={(value) => {
+              setPromoCode(value.toUpperCase().replace(/\s+/g, ""));
+              setLocalError("");
+            }}
+            placeholder={copy.promoHint}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          {promoCode.trim() && !quoteLoading ? (
+            <AppText family="inter" style={{ fontSize: 12, color: summary.discountAmount > 0 ? COLORS.success : COLORS.danger, marginTop: 10 }}>
+              {summary.discountAmount > 0 ? copy.promoApplied : copy.promoInvalid}
+            </AppText>
+          ) : null}
         </View>
 
         {!app.sessionActive ? (

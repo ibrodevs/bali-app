@@ -395,6 +395,7 @@ export function buildCreateBookingPayload({
   deliverySlot,
   paymentMethod,
   currency = "USD",
+  promoCode = "",
 }) {
   const apiPaymentMethod = paymentMethod === "crypto" ? "online_card" : paymentMethod;
   return {
@@ -408,6 +409,7 @@ export function buildCreateBookingPayload({
     delivery_address: deliveryAddress,
     delivery_latitude: deliveryZone?.latitude,
     delivery_longitude: deliveryZone?.longitude,
+    promo_code: promoCode || undefined,
   };
 }
 
