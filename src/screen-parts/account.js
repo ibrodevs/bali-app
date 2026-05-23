@@ -363,10 +363,6 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
                 Bali Support
               </AppText>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: "#34C759" }} />
-                <AppText family="inter" weight="medium" style={{ fontSize: 13, color: "#8E8E93" }}>
-                  Online now
-                </AppText>
               </View>
             </View>
           </View>
@@ -403,7 +399,7 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
         {loading ? <LoadingBlock label={copy.loading} /> : null}
         <View style={{ gap: 10, marginBottom: 26 }}>
           {threads.length ? (
-            threads.map((thread, index) => {
+            threads.map((thread) => {
               const latestMessage = thread.last_message;
               const initials = String(thread.title || copy.supportChat)
                 .trim()
@@ -439,10 +435,6 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
                         {latestMessage?.text || copy.supportHint}
                       </AppText>
                       {thread.has_unread_support_reply ? (
-                        <Badge variant="gold">{copy.newReply}</Badge>
-                      ) : latestMessage?.is_from_support ? (
-                        <Badge variant="green">{copy.supportReplied}</Badge>
-                      ) : index === 0 ? (
                         <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: "#3797F0" }} />
                       ) : null}
                     </View>
@@ -550,19 +542,6 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
               <AppText family="inter" weight="medium" style={{ fontSize: 12, color: "#8E8E93" }}>
                 Online
               </AppText>
-              {thread?.has_unread_support_reply ? (
-                <View style={{ borderRadius: 999, backgroundColor: COLORS.gold, paddingHorizontal: 8, paddingVertical: 3 }}>
-                  <AppText family="inter" weight="bold" style={{ fontSize: 10, color: COLORS.black }}>
-                    {copy.newReply}
-                  </AppText>
-                </View>
-              ) : thread?.last_message?.is_from_support ? (
-                <View style={{ borderRadius: 999, backgroundColor: "rgba(22,163,74,0.14)", paddingHorizontal: 8, paddingVertical: 3 }}>
-                  <AppText family="inter" weight="bold" style={{ fontSize: 10, color: "#16A34A" }}>
-                    {copy.supportReplied}
-                  </AppText>
-                </View>
-              ) : null}
             </View>
           </View>
           <Pressable onPress={onStartThread} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F7F7F8", alignItems: "center", justifyContent: "center" }}>

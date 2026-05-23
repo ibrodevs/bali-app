@@ -3,7 +3,7 @@ import { Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { formatConvertedMoney } from "../data";
 import { COLORS, SHADOWS } from "../theme";
-import { AppText, Badge, ScooterThumb, Stars } from "../components";
+import { AppText, Badge, ScooterThumb } from "../components";
 
 export function SummaryRow({ label, value, border = false, labelColor = COLORS.gray500, valueColor = COLORS.black }) {
   return (
@@ -101,12 +101,6 @@ export function FleetCard({ actionLabel, copy, currency, language, onPress, scoo
             <AppText family="sora" weight="extrabold" style={{ fontSize: 20, color: COLORS.black, letterSpacing: -0.7 }}>
               {scooter.name}
             </AppText>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-              <Stars rating={scooter.rating} size={12} />
-              <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500 }}>
-                {`${scooter.reviews} ${copy.reviewsLabel}`}
-              </AppText>
-            </View>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <AppText family="inter" weight="bold" style={{ fontSize: 10, color: COLORS.gray500, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>
@@ -117,10 +111,6 @@ export function FleetCard({ actionLabel, copy, currency, language, onPress, scoo
             </AppText>
           </View>
         </View>
-
-        <AppText family="inter" style={{ fontSize: 13, lineHeight: 22, color: COLORS.gray500, marginBottom: 14 }}>
-          {scooter.description}
-        </AppText>
         <View style={{ minHeight: 50, borderRadius: 16, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
           <AppText family="inter" weight="bold" style={{ fontSize: 14, color: COLORS.white }}>
             {actionLabel}

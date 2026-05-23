@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -59,6 +59,7 @@ const STORAGE_KEYS = {
   currency: "scoot-bali.currency",
   session: "scoot-bali.session",
   onboarding: "scoot-bali.onboarding",
+  supportThreadSeenAt: "scoot-bali.support-thread-seen-at",
 };
 
 const DARK_ROUTES = new Set(["splash", "onboarding-1", "onboarding-2", "onboarding-3"]);
@@ -174,12 +175,105 @@ export default function App() {
   const [threadSending, setThreadSending] = useState(false);
   const [threadError, setThreadError] = useState("");
   const [threadMessage, setThreadMessage] = useState("");
+  const [supportThreadSeenAt, setSupportThreadSeenAt] = useState({});
   const [settingsError, setSettingsError] = useState("");
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   const route = stack[stack.length - 1];
+  const notificationsRef = useRef(notifications);
+  const supportThreadSeenAtRef = useRef(supportThreadSeenAt);
   const normalizedPromoCode = useDeferredValue(promoCode.trim().toUpperCase());
   const getLocalizedErrorMessage = (error) => getErrorMessage(error, translate(language, "somethingWentWrong"));
+
+  function getLatestSupportMessageTimestamp(thread, messages = null) {
+    if (Array.isArray(messages) && messages.length) {
+      const lastSupportMessage = [...messages]
+        .reverse()
+        .find((item) => item?.is_from_support || ["manager", "staff", "admin"].includes(item?.sender?.role));
+      return lastSupportMessage?.created_at || null;
+    }
+
+    if (thread?.support_replied_at && thread?.last_message?.created_at) {
+      const supportReplyTime = Date.parse(thread.support_replied_at);
+      const lastMessageTime = Date.parse(thread.last_message.created_at);
+      if (!Number.isNaN(supportReplyTime) && supportReplyTime === lastMessageTime) {
+        return thread.support_replied_at;
+      }
+    }
+
+    if (thread?.support_replied_at && !thread?.last_message?.created_at) {
+      return thread.support_replied_at;
+    }
+
+    if (thread?.last_message?.is_from_support && thread?.last_message?.created_at) {
+      return thread.last_message.created_at;
+    }
+
+    return null;
+  }
+
+  function hasUnreadSupportReplyLocally(thread, seenMap = supportThreadSeenAtRef.current) {
+    const latestSupportReplyAt = getLatestSupportMessageTimestamp(thread);
+    if (!thread?.id || !latestSupportReplyAt) {
+      return false;
+    }
+
+    const lastSeenAt = seenMap[String(thread.id)];
+    if (!lastSeenAt) {
+      return true;
+    }
+
+    return Date.parse(latestSupportReplyAt) > Date.parse(lastSeenAt);
+  }
+
+  function rememberSupportThreadSeen(threadId, timestamp) {
+    if (!threadId || !timestamp) {
+      return;
+    }
+
+    setSupportThreadSeenAt((current) => {
+      const key = String(threadId);
+      const nextTimestamp =
+        !current[key] || Date.parse(timestamp) > Date.parse(current[key]) ? timestamp : current[key];
+      if (nextTimestamp === current[key]) {
+        return current;
+      }
+
+      const next = { ...current, [key]: nextTimestamp };
+      AsyncStorage.setItem(STORAGE_KEYS.supportThreadSeenAt, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }
+
+  function hasUnreadSupportReplyInNotifications(threadId, items = notifications) {
+    if (!threadId) {
+      return false;
+    }
+
+    const normalizedThreadId = String(threadId);
+    return items.some((item) => {
+      const itemThreadId = item?.data?.thread_id || item?.data_json?.thread_id;
+      return !item.is_read && item.type === "chat_message_from_support" && String(itemThreadId) === normalizedThreadId;
+    });
+  }
+
+  function mergeThreadsWithUnreadSupportReplies(threads = [], items = notifications) {
+    return threads.map((thread) => ({
+      ...thread,
+      has_unread_support_reply:
+        Boolean(thread?.has_unread_support_reply) ||
+        hasUnreadSupportReplyInNotifications(thread?.id, items) ||
+        hasUnreadSupportReplyLocally(thread),
+    }));
+  }
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
+  useEffect(() => {
+    supportThreadSeenAtRef.current = supportThreadSeenAt;
+  }, [supportThreadSeenAt]);
 
   useEffect(() => {
     if (interLoaded && soraLoaded) {
@@ -198,11 +292,12 @@ export default function App() {
 
     async function restore() {
       try {
-        const [storedLanguage, storedCurrency, storedSession, storedOnboarding] = await Promise.all([
+        const [storedLanguage, storedCurrency, storedSession, storedOnboarding, storedSupportThreadSeenAt] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.language),
           AsyncStorage.getItem(STORAGE_KEYS.currency),
           AsyncStorage.getItem(STORAGE_KEYS.session),
           AsyncStorage.getItem(STORAGE_KEYS.onboarding),
+          AsyncStorage.getItem(STORAGE_KEYS.supportThreadSeenAt),
         ]);
 
         if (!active) {
@@ -219,6 +314,16 @@ export default function App() {
           setSession(JSON.parse(storedSession));
         }
         setHasSeenOnboarding(storedOnboarding === "1");
+        if (storedSupportThreadSeenAt) {
+          try {
+            const parsedSeenAt = JSON.parse(storedSupportThreadSeenAt);
+            if (parsedSeenAt && typeof parsedSeenAt === "object" && !Array.isArray(parsedSeenAt)) {
+              setSupportThreadSeenAt(parsedSeenAt);
+            }
+          } catch {
+            // no-op
+          }
+        }
       } finally {
         if (active) {
           setStartupReady(true);
@@ -306,6 +411,7 @@ export default function App() {
     }
 
     await AsyncStorage.removeItem(STORAGE_KEYS.session).catch(() => {});
+    await AsyncStorage.removeItem(STORAGE_KEYS.supportThreadSeenAt).catch(() => {});
     setSession(null);
     setProfile(null);
     setBookings([]);
@@ -314,23 +420,26 @@ export default function App() {
     setQuickReplies([]);
     setThreadMessages([]);
     setThreadMessage("");
+    setSupportThreadSeenAt({});
     setBookingContact(initialBookingContact());
     setQuote(null);
     setPromoCode("");
     setStack([{ name: nextRoute }]);
   }
 
-  async function refreshChatSummary(accessToken = session?.access) {
+  async function refreshChatSummary(accessToken = session?.access, options = {}) {
     if (!accessToken) {
       return [];
     }
+
+    const { notifications: notificationItems = notifications } = options;
 
     const [threadsData, quickRepliesData] = await Promise.all([
       apiRequest("/chat/threads/", { token: accessToken, language }),
       apiRequest("/chat/quick-replies/?is_active=true", { token: accessToken, language }),
     ]);
     const nextThreads = unwrapList(threadsData);
-    setChatThreads(nextThreads);
+    setChatThreads(mergeThreadsWithUnreadSupportReplies(nextThreads, notificationItems));
     setQuickReplies(unwrapList(quickRepliesData));
     return nextThreads;
   }
@@ -343,7 +452,27 @@ export default function App() {
     const notificationsData = await apiRequest("/notifications/", { token: accessToken, language });
     const nextNotifications = unwrapList(notificationsData);
     setNotifications(nextNotifications);
+    setChatThreads((current) => mergeThreadsWithUnreadSupportReplies(current, nextNotifications));
     return nextNotifications;
+  }
+
+  async function syncSupportState(accessToken = session?.access, options = {}) {
+    if (!accessToken) {
+      return;
+    }
+
+    const { threadId } = options;
+    const nextNotifications = await refreshNotifications(accessToken).catch(() => null);
+    const notificationItems = Array.isArray(nextNotifications) ? nextNotifications : notificationsRef.current;
+    await refreshChatSummary(accessToken, { notifications: notificationItems }).catch(() => {});
+    if (threadId) {
+      const nextMessages = await refreshThreadMessages(threadId, accessToken, { background: true }).catch(() => []);
+      const latestSupportReplyAt = getLatestSupportMessageTimestamp(null, nextMessages);
+      if (latestSupportReplyAt) {
+        rememberSupportThreadSeen(threadId, latestSupportReplyAt);
+        await markSupportThreadRead(threadId, accessToken).catch(() => {});
+      }
+    }
   }
 
   async function loadPrivateData(accessToken = session?.access, options = {}) {
@@ -368,8 +497,10 @@ export default function App() {
 
       setProfile(profileData);
       setBookings(unwrapList(bookingsData));
-      setNotifications(unwrapList(notificationsData));
-      setChatThreads(unwrapList(threadsData));
+      const nextNotifications = unwrapList(notificationsData);
+      const nextThreads = unwrapList(threadsData);
+      setNotifications(nextNotifications);
+      setChatThreads(mergeThreadsWithUnreadSupportReplies(nextThreads, nextNotifications));
       setQuickReplies(unwrapList(quickRepliesData));
       if (!background) {
         setPrivateLoading(false);
@@ -855,24 +986,26 @@ export default function App() {
       return;
     }
 
+    const normalizedThreadId = String(threadId);
+    setChatThreads((current) =>
+      current.map((item) => (item.id === threadId ? { ...item, has_unread_support_reply: false } : item)),
+    );
+    setNotifications((current) =>
+      current.map((item) => {
+        const itemThreadId = item?.data?.thread_id || item?.data_json?.thread_id;
+        if (!item.is_read && item.type === "chat_message_from_support" && String(itemThreadId) === normalizedThreadId) {
+          return { ...item, is_read: true };
+        }
+        return item;
+      }),
+    );
+
     try {
       await apiRequest(`/chat/threads/${threadId}/mark-support-replies-read/`, {
         method: "POST",
         token: accessToken,
         language,
       });
-      setChatThreads((current) =>
-        current.map((item) => (item.id === threadId ? { ...item, has_unread_support_reply: false } : item)),
-      );
-      setNotifications((current) =>
-        current.map((item) => {
-          const itemThreadId = item?.data?.thread_id || item?.data_json?.thread_id;
-          if (!item.is_read && item.type === "chat_message_from_support" && itemThreadId === threadId) {
-            return { ...item, is_read: true };
-          }
-          return item;
-        }),
-      );
     } catch {
       // no-op
     }
@@ -885,11 +1018,18 @@ export default function App() {
     }
 
     setSupportError("");
-    const messages = await refreshThreadMessages(threadId, session.access);
-    if (messages) {
-      await markSupportThreadRead(threadId, session.access);
-      await refreshChatSummary(session.access).catch(() => {});
-      setStack((current) => [...current, { name: "thread", params: { threadId } }]);
+    setThreadMessages([]);
+    setThreadError("");
+    setStack((current) => [...current, { name: "thread", params: { threadId } }]);
+
+    markSupportThreadRead(threadId, session.access)
+      .then(() => refreshChatSummary(session.access).catch(() => {}))
+      .catch(() => {});
+
+    const nextMessages = await refreshThreadMessages(threadId, session.access);
+    const latestSupportReplyAt = getLatestSupportMessageTimestamp(null, nextMessages);
+    if (latestSupportReplyAt) {
+      rememberSupportThreadSeen(threadId, latestSupportReplyAt);
     }
   }
 
@@ -1101,13 +1241,14 @@ export default function App() {
       return;
     }
 
+    const threadId = route.name === "thread" ? route.params?.threadId : null;
+    const intervalMs = route.name === "profile" ? 5000 : 2000;
+
+    syncSupportState(session.access, { threadId }).catch(() => {});
+
     const intervalId = setInterval(() => {
-      refreshNotifications(session.access).catch(() => {});
-      refreshChatSummary(session.access).catch(() => {});
-      if (route.name === "thread" && route.params?.threadId) {
-        refreshThreadMessages(route.params.threadId, session.access, { background: true });
-      }
-    }, 5000);
+      syncSupportState(session.access, { threadId }).catch(() => {});
+    }, intervalMs);
 
     return () => clearInterval(intervalId);
   }, [language, route.name, route.params?.threadId, session?.access]);
