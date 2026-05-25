@@ -9,6 +9,7 @@ import {
   buildCalendarMonth,
   buildLocalBookingPreview,
   formatBookingStatus,
+  formatBookingTotal,
   formatDate,
   formatDateRange,
   formatConvertedMoney,
@@ -57,6 +58,7 @@ function formatDateKey(timestamp) {
 export function BookingDatesScreen({ app, bookingRange, navigation, scooter, setBookingRange }) {
   const insets = useSafeAreaInsets();
   const [visibleMonthStart, setVisibleMonthStart] = useState(() => startOfMonthValue(bookingRange.start));
+  const [selectionMode, setSelectionMode] = useState("start");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
   const [availabilityMap, setAvailabilityMap] = useState(() => new Map());
@@ -148,22 +150,26 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
     if (disabled) return;
     if (statusForTimestamp(timestamp) !== "available") return;
 
-    if (!bookingRange.start || timestamp < bookingRange.start) {
+    if (selectionMode === "start" || !bookingRange.start) {
       setBookingRange({ start: timestamp, end: addDays(new Date(timestamp), 1).getTime() });
+      setSelectionMode("end");
       return;
     }
 
-    if (timestamp === bookingRange.start) {
+    if (timestamp <= bookingRange.start) {
       setBookingRange({ start: timestamp, end: addDays(new Date(timestamp), 1).getTime() });
+      setSelectionMode("end");
       return;
     }
 
     if (rangeHasUnavailable(bookingRange.start, timestamp)) {
       setBookingRange({ start: timestamp, end: addDays(new Date(timestamp), 1).getTime() });
+      setSelectionMode("end");
       return;
     }
 
     setBookingRange({ start: bookingRange.start, end: timestamp });
+    setSelectionMode("start");
   };
 
   return (
@@ -187,17 +193,28 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
 
           <View style={{ flexDirection: "row", gap: 10 }}>
             {[
-              { label: copy.checkIn, value: formatDate(bookingRange.start, app.language) },
-              { label: copy.checkOut, value: formatDate(checkoutDay, app.language) },
+              { label: copy.checkIn, value: formatDate(bookingRange.start, app.language), key: "start" },
+              { label: copy.checkOut, value: formatDate(checkoutDay, app.language), key: "end" },
             ].map((item) => (
-              <View key={item.label} style={{ flex: 1, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.08)", padding: 14 }}>
+              <Pressable
+                key={item.label}
+                onPress={() => setSelectionMode(item.key)}
+                style={{
+                  flex: 1,
+                  borderRadius: 16,
+                  backgroundColor: item.key === selectionMode ? "rgba(255,215,0,0.14)" : "rgba(255,255,255,0.08)",
+                  borderWidth: 1,
+                  borderColor: item.key === selectionMode ? COLORS.gold : "rgba(255,255,255,0.08)",
+                  padding: 14,
+                }}
+              >
                 <AppText family="inter" weight="bold" style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>
                   {item.label}
                 </AppText>
                 <AppText family="sora" weight="bold" style={{ fontSize: 15, color: COLORS.white }}>
                   {item.value}
                 </AppText>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -302,21 +319,38 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
             {availabilityError}
           </AppText>
         ) : null}
+        {!availabilityLoading ? (
+          <AppText family="inter" style={{ fontSize: 13, color: COLORS.gray500, marginBottom: 16 }}>
+            {selectionMode === "start" ? copy.checkIn : copy.checkOut}
+          </AppText>
+        ) : null}
 
         <View style={{ flexDirection: "row", gap: 14, marginBottom: 18 }}>
           {[
-            { label: copy.checkIn, value: formatDate(bookingRange.start, app.language) },
-            { label: copy.checkOut, value: formatDate(checkoutDay, app.language) },
+            { label: copy.checkIn, value: formatDate(bookingRange.start, app.language), key: "start" },
+            { label: copy.checkOut, value: formatDate(checkoutDay, app.language), key: "end" },
             { label: copy.duration, value: `${getBookingDuration(bookingRange)} ${app.labels.daysLabel}` },
           ].map((item, index) => (
-            <View key={item.label} style={{ flex: 1, borderRadius: 18, backgroundColor: index === 2 ? COLORS.gold : COLORS.gray100, padding: 14 }}>
+            <Pressable
+              key={item.label}
+              onPress={item.key ? () => setSelectionMode(item.key) : undefined}
+              disabled={!item.key}
+              style={{
+                flex: 1,
+                borderRadius: 18,
+                backgroundColor: index === 2 ? COLORS.gold : item.key === selectionMode ? "#FFF5CC" : COLORS.gray100,
+                borderWidth: item.key === selectionMode ? 1.5 : 0,
+                borderColor: item.key === selectionMode ? COLORS.gold : "transparent",
+                padding: 14,
+              }}
+            >
               <AppText family="inter" weight="bold" style={{ fontSize: 10, color: COLORS.gray500, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>
                 {item.label}
               </AppText>
               <AppText family="sora" weight="bold" style={{ fontSize: 14, color: COLORS.black }}>
                 {item.value}
               </AppText>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -874,7 +908,7 @@ export function OrderConfirmedScreen({ app, booking, navigation, scooter }) {
             { label: copy.vehicle, value: scooter?.name || booking?.scooter?.title || "-" },
             { label: copy.duration, value: `${booking?.rental_days || 1} ${app.labels.daysLabel}` },
             { label: copy.delivery, value: booking ? buildBookingDeliveryLabel(booking, app.language) : "-" },
-            { label: copy.total, value: formatConvertedMoney(booking?.total_price || 0, booking?.currency || "USD", app.currency, app.language) },
+            { label: copy.total, value: formatBookingTotal(booking, app.currency, app.language) },
           ].map((row) => (
             <View key={row.label} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
               <AppText family="inter" style={{ fontSize: 14, color: COLORS.gray700 }}>

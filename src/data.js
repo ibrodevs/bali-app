@@ -214,6 +214,11 @@ export function formatConvertedMoney(value, fromCurrency = "USD", toCurrency = "
   return formatMoney(convertAmount(value, fromCurrency, toCurrency), toCurrency, language);
 }
 
+export function formatBookingTotal(booking, targetCurrency = "USD", language = "en") {
+  const totalUsd = Number(booking?.total_price || booking?.total_usd || 0);
+  return formatConvertedMoney(totalUsd, "USD", targetCurrency, language);
+}
+
 export function formatDate(value, language = "en", options = { month: "short", day: "numeric" }) {
   return new Intl.DateTimeFormat(getLocale(language), options).format(new Date(value));
 }

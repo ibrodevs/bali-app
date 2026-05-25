@@ -538,6 +538,15 @@ export default function App() {
     }));
   }, [profile]);
 
+  useEffect(() => {
+    const slots = bootstrap?.deliverySlots;
+    if (!Array.isArray(slots) || !slots.length) {
+      return;
+    }
+
+    setDeliverySlot((current) => (slots.includes(current) ? current : slots[0]));
+  }, [bootstrap?.deliverySlots]);
+
   const fleet = bootstrap?.fleet?.items || [];
   const zones = bootstrap?.deliveryZones || [];
   const addons = useMemo(() => (bootstrap?.addons || []).map((item) => localizeAddon(item, language)), [bootstrap?.addons, language]);
@@ -1258,6 +1267,18 @@ export default function App() {
       push: (name, params = {}) => setStack((current) => [...current, { name, params }]),
       replace: (name, params = {}) => setStack((current) => replaceTop(current, { name, params })),
       goBack: () => setStack((current) => (current.length > 1 ? current.slice(0, -1) : current)),
+      openSignIn: () => {
+        setPasswordResetSession(null);
+        setAuthError("");
+        setAuthMode("signin");
+        setStack((current) => [...current, { name: "login" }]);
+      },
+      openSignUp: () => {
+        setPasswordResetSession(null);
+        setAuthError("");
+        setAuthMode("signup");
+        setStack((current) => [...current, { name: "login" }]);
+      },
       toTab: (name) => setStack([{ name }]),
       signOut: () => signOut("home"),
       openScooter: (id) => {

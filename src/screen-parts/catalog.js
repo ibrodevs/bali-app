@@ -6,6 +6,26 @@ import { COLORS, SHADOWS } from "../theme";
 import { AppText, Badge, BottomNav, CenteredScrollView, FilterPill, GlassCircleButton, PageContent, PrimaryButton, ResolvedIcon, ScooterThumb, SearchBar, Stars } from "../components";
 import { EmptyCard, FleetCard, SectionHeader } from "./shared";
 
+function buildCategoryOptions(fleet = [], labels = {}, copy = {}) {
+  const dynamicCategories = Array.from(
+    new Map(
+      fleet
+        .filter((vehicle) => vehicle?.type)
+        .map((vehicle) => {
+          const key = String(vehicle.type);
+          const label = labels?.[key] || vehicle?.typeLabel || key;
+          return [key, { key, label }];
+        }),
+    ).values(),
+  );
+
+  return [
+    { key: "all", label: copy.all },
+    ...dynamicCategories,
+    { key: "available", label: copy.available },
+  ];
+}
+
 function PreferenceOverlay({ app, onClose, onSelect, preferenceError, preferenceSaving, type }) {
   if (!type) {
     return null;
@@ -119,8 +139,15 @@ export function HomeScreen({ app, navigation, onChangeCurrency, onChangeLanguage
     () => fleet.filter((vehicle) => vehicleMatchesSearch(vehicle, deferredSearch) && vehicleMatchesCategory(vehicle, category)),
     [category, deferredSearch, fleet],
   );
+  const categoryOptions = useMemo(() => buildCategoryOptions(fleet, labels.types, copy), [copy, fleet, labels.types]);
   const headerTitle = profile?.full_name || profile?.email || "Scoot Bali";
   const headerInitials = (profile?.full_name || profile?.email || "SB").slice(0, 2).toUpperCase();
+
+  useEffect(() => {
+    if (!categoryOptions.some((item) => item.key === category)) {
+      setCategory("all");
+    }
+  }, [category, categoryOptions]);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.white }}>
@@ -149,13 +176,7 @@ export function HomeScreen({ app, navigation, onChangeCurrency, onChangeLanguage
           </View>
           <SearchBar placeholder={copy.searchFleet} value={search} onChangeText={setSearch} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 16, paddingBottom: 22 }}>
-            {[
-              { key: "all", label: copy.all },
-              { key: "scooter", label: labels.types?.scooter || copy.scooterLabel },
-              { key: "maxi", label: labels.types?.maxi || copy.maxiLabel },
-              { key: "moto", label: labels.types?.moto || copy.motorcycleLabel },
-              { key: "available", label: copy.available },
-            ].map((item) => (
+            {categoryOptions.map((item) => (
               <FilterPill key={item.key} label={item.label} active={category === item.key} onPress={() => setCategory(item.key)} />
             ))}
           </ScrollView>
@@ -213,6 +234,13 @@ export function FleetScreen({ app, navigation }) {
     () => fleet.filter((vehicle) => vehicleMatchesSearch(vehicle, deferredSearch) && vehicleMatchesCategory(vehicle, filter)),
     [deferredSearch, filter, fleet],
   );
+  const categoryOptions = useMemo(() => buildCategoryOptions(fleet, labels.types, copy), [copy, fleet, labels.types]);
+
+  useEffect(() => {
+    if (!categoryOptions.some((item) => item.key === filter)) {
+      setFilter("all");
+    }
+  }, [categoryOptions, filter]);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.gray100 }}>
@@ -223,13 +251,7 @@ export function FleetScreen({ app, navigation }) {
           </AppText>
           <SearchBar placeholder={copy.searchFleet} value={search} onChangeText={setSearch} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 16, paddingBottom: 16 }}>
-            {[
-              { key: "all", label: copy.all },
-              { key: "scooter", label: labels.types?.scooter || copy.scooterLabel },
-              { key: "maxi", label: labels.types?.maxi || copy.maxiLabel },
-              { key: "moto", label: labels.types?.moto || copy.motorcycleLabel },
-              { key: "available", label: copy.available },
-            ].map((item) => (
+            {categoryOptions.map((item) => (
               <Pressable key={item.key} onPress={() => setFilter(item.key)} style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: filter === item.key ? COLORS.gold : COLORS.gray100, borderWidth: 1, borderColor: filter === item.key ? COLORS.gold : COLORS.gray200 }}>
                 <AppText family="inter" weight="bold" style={{ fontSize: 12, color: filter === item.key ? COLORS.black : COLORS.gray700 }}>
                   {item.label}

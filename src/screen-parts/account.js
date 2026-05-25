@@ -3,9 +3,9 @@ import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pre
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { buildBookingDeliveryLabel, formatBookingStatus, formatConvertedMoney, formatDateRange, formatDateTime } from "../data";
+import { buildBookingDeliveryLabel, formatBookingStatus, formatBookingTotal, formatDateRange, formatDateTime } from "../data";
 import { COLORS, SHADOWS } from "../theme";
-import { AppText, Badge, BottomNav, CenteredScrollView, LabeledInput, LoadingBlock, PageContent, PrimaryButton, ScooterThumb, SearchBar } from "../components";
+import { AppText, Badge, BottomNav, CenteredScrollView, LabeledInput, LoadingBlock, PageContent, PrimaryButton, ScooterThumb } from "../components";
 import { EmptyCard, ScreenHeader, SectionHeader } from "./shared";
 
 export function BookingsScreen({ app, navigation, onOpenBookingStatus }) {
@@ -18,6 +18,7 @@ export function BookingsScreen({ app, navigation, onOpenBookingStatus }) {
     if (tab === "completed") return app.bookings.filter((booking) => ["completed", "cancelled"].includes(booking.status));
     return app.bookings;
   }, [app.bookings, tab]);
+  const emptyBookingsBody = app.sessionActive ? copy.noBookingsHint : copy.signInHint;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.gray100 }}>
@@ -64,7 +65,7 @@ export function BookingsScreen({ app, navigation, onOpenBookingStatus }) {
                     </View>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                       <AppText family="sora" weight="extrabold" style={{ fontSize: 18, color: COLORS.black }}>
-                        {formatConvertedMoney(booking.total_price, booking.currency || "USD", app.currency, app.language)}
+                        {formatBookingTotal(booking, app.currency, app.language)}
                       </AppText>
                       <Pressable onPress={() => (active ? onOpenBookingStatus(booking) : navigation.openScooter(booking.scooter?.id))} style={{ borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: active ? COLORS.black : COLORS.gray100 }}>
                         <AppText family="inter" weight="bold" style={{ fontSize: 12, color: active ? COLORS.white : COLORS.black }}>
@@ -77,7 +78,7 @@ export function BookingsScreen({ app, navigation, onOpenBookingStatus }) {
               );
             })
           ) : (
-            <EmptyCard title={copy.noBookings} body={app.sessionActive ? copy.signInHint : copy.registerHint} />
+            <EmptyCard title={copy.noBookings} body={emptyBookingsBody} />
           )}
         </PageContent>
       </CenteredScrollView>
@@ -179,8 +180,8 @@ export function ProfileScreen({ app, navigation, onChangeCurrency, onChangeLangu
         { icon: "log-out-outline", label: copy.signOut, action: navigation.signOut, danger: true },
       ]
     : [
-        { icon: "person-outline", label: copy.signIn, action: () => navigation.push("login") },
-        { icon: "person-add-outline", label: copy.createAccount, action: () => navigation.push("login") },
+        { icon: "person-outline", label: copy.signIn, action: navigation.openSignIn },
+        { icon: "person-add-outline", label: copy.createAccount, action: navigation.openSignUp },
       ];
 
   async function handlePreferenceChange(type, value) {
@@ -322,82 +323,66 @@ export function NotificationsScreen({ app, loading, markAllRead, navigation, onO
 export function SupportScreen({ app, error, loading, navigation, onOpenThread, onStartThread, quickReplySend }) {
   const insets = useSafeAreaInsets();
   const copy = app.copy;
-  const [searchValue, setSearchValue] = useState("");
-  const threads = useMemo(() => {
-    const query = searchValue.trim().toLowerCase();
-    if (!query) return app.chatThreads;
-
-    return app.chatThreads.filter((thread) => {
-      const title = String(thread.title || "").toLowerCase();
-      const preview = String(thread.last_message?.text || "").toLowerCase();
-      return title.includes(query) || preview.includes(query);
-    });
-  }, [app.chatThreads, searchValue]);
+  const threads = app.chatThreads;
 
   return (
-    <CenteredScrollView backgroundColor={COLORS.white}>
+    <CenteredScrollView backgroundColor={COLORS.gray100}>
       <PageContent style={{ paddingHorizontal: 20, paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 24) + 24 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 18 }}>
-          <Pressable onPress={navigation.goBack} style={{ width: 38, height: 38, alignItems: "center", justifyContent: "center", marginLeft: -8 }}>
-            <Ionicons name="chevron-back" size={24} color={COLORS.black} />
-          </Pressable>
-          <AppText family="sora" weight="bold" style={{ flex: 1, fontSize: 24, color: COLORS.black, letterSpacing: -0.8 }}>
-            {copy.supportChat}
-          </AppText>
-          <Pressable onPress={onStartThread} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="create-outline" size={20} color={COLORS.white} />
-          </Pressable>
-        </View>
+        <ScreenHeader
+          title={copy.helpSupport}
+          onBack={navigation.goBack}
+          rightAction={(
+            <Pressable onPress={onStartThread} style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="create-outline" size={18} color={COLORS.white} />
+            </Pressable>
+          )}
+        />
 
-        <View style={{ borderRadius: 28, backgroundColor: COLORS.white, borderWidth: 1, borderColor: "#E9E9EC", padding: 18, marginBottom: 16, ...SHADOWS.card }}>
+        <View style={{ borderRadius: 24, backgroundColor: COLORS.black, padding: 18, marginBottom: 20, ...SHADOWS.card }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 14 }}>
-            <LinearGradient colors={["#FEDA75", "#FA7E1E", "#D62976", "#962FBF", "#4F5BD5"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 58, height: 58, borderRadius: 29, padding: 2 }}>
-              <View style={{ flex: 1, borderRadius: 27, backgroundColor: COLORS.white, alignItems: "center", justifyContent: "center" }}>
-                <AppText family="inter" weight="bold" style={{ fontSize: 17, color: COLORS.black }}>
-                  BS
-                </AppText>
-              </View>
-            </LinearGradient>
+            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center", ...SHADOWS.gold }}>
+              <Ionicons name="chatbubbles-outline" size={26} color={COLORS.black} />
+            </View>
             <View style={{ flex: 1 }}>
-              <AppText family="sora" weight="bold" style={{ fontSize: 18, color: COLORS.black, marginBottom: 4 }}>
+              <AppText family="inter" weight="bold" style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6 }}>
+                {copy.supportChat}
+              </AppText>
+              <AppText family="sora" weight="extrabold" style={{ fontSize: 22, color: COLORS.white, letterSpacing: -0.7 }}>
                 Bali Support
               </AppText>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              </View>
             </View>
           </View>
-          <AppText family="inter" style={{ fontSize: 14, color: COLORS.gray700, lineHeight: 22, marginBottom: 14 }}>
+          <AppText family="inter" style={{ fontSize: 14, color: "rgba(255,255,255,0.62)", lineHeight: 22, marginBottom: 16 }}>
             {copy.supportHint}
           </AppText>
-          <View style={{ flexDirection: "row" }}>
-            <Pressable onPress={onStartThread} style={{ flex: 1, minHeight: 48, borderRadius: 16, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center" }}>
-              <AppText family="inter" weight="bold" style={{ fontSize: 14, color: COLORS.white }}>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable onPress={onStartThread} style={{ flex: 1, minHeight: 50, borderRadius: 16, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center" }}>
+              <AppText family="inter" weight="bold" style={{ fontSize: 14, color: COLORS.black }}>
                 {copy.openLiveChat}
               </AppText>
             </Pressable>
+            <View style={{ minWidth: 88, borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }}>
+              <AppText family="sora" weight="bold" style={{ fontSize: 18, color: COLORS.white }}>
+                {threads.length}
+              </AppText>
+              <AppText family="inter" style={{ fontSize: 10, color: "rgba(255,255,255,0.52)", textTransform: "uppercase", letterSpacing: 0.9 }}>
+                Chats
+              </AppText>
+            </View>
           </View>
         </View>
 
-        <SearchBar placeholder={copy.typeMessage} value={searchValue} onChangeText={setSearchValue} />
-
         {error ? (
-          <View style={{ marginTop: 16, marginBottom: 4, borderRadius: 16, backgroundColor: "#FEF2F2", paddingHorizontal: 14, paddingVertical: 12 }}>
+          <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#FEF2F2", paddingHorizontal: 14, paddingVertical: 12 }}>
             <AppText family="inter" style={{ fontSize: 13, color: COLORS.danger }}>
               {error}
             </AppText>
           </View>
         ) : null}
 
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 22, marginBottom: 14 }}>
-          <AppText family="sora" weight="bold" style={{ fontSize: 19, color: COLORS.black }}>
-            {copy.supportChat}
-          </AppText>
-          <AppText family="inter" weight="medium" style={{ fontSize: 13, color: "#8E8E93" }}>
-            {threads.length}
-          </AppText>
-        </View>
+        <SectionHeader title={copy.supportChat} />
         {loading ? <LoadingBlock label={copy.loading} /> : null}
-        <View style={{ gap: 10, marginBottom: 26 }}>
+        <View style={{ gap: 12, marginBottom: 26 }}>
           {threads.length ? (
             threads.map((thread) => {
               const latestMessage = thread.last_message;
@@ -412,31 +397,30 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
                 <Pressable
                   key={thread.id}
                   onPress={() => onOpenThread(thread.id)}
-                  style={{ flexDirection: "row", alignItems: "center", borderRadius: 24, backgroundColor: COLORS.white, borderWidth: 1, borderColor: "#E9E9EC", paddingHorizontal: 14, paddingVertical: 14 }}
+                  style={{ borderRadius: 20, backgroundColor: COLORS.white, padding: 16, borderWidth: 1, borderColor: COLORS.gray200, ...SHADOWS.card }}
                 >
-                  <LinearGradient colors={["#FEDA75", "#FA7E1E", "#D62976", "#962FBF", "#4F5BD5"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, padding: 2 }}>
-                    <View style={{ flex: 1, borderRadius: 25, backgroundColor: COLORS.white, alignItems: "center", justifyContent: "center" }}>
-                      <AppText family="inter" weight="bold" style={{ fontSize: 15, color: COLORS.black }}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                      <AppText family="sora" weight="bold" style={{ fontSize: 14, color: COLORS.gold }}>
                         {initials || "SP"}
                       </AppText>
                     </View>
-                  </LinearGradient>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                      <AppText family="inter" weight="bold" style={{ flex: 1, fontSize: 15, color: COLORS.black }}>
-                        {thread.title}
-                      </AppText>
-                      <AppText family="inter" style={{ fontSize: 12, color: "#8E8E93" }}>
-                        {latestMessage?.created_at ? formatDateTime(latestMessage.created_at, app.language) : ""}
-                      </AppText>
-                    </View>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <AppText numberOfLines={1} family="inter" style={{ flex: 1, fontSize: 13, color: "#8E8E93", lineHeight: 18 }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <AppText family="sora" weight="bold" style={{ flex: 1, fontSize: 15, color: COLORS.black }}>
+                          {thread.title}
+                        </AppText>
+                        {thread.has_unread_support_reply ? <Badge variant="gold">{copy.newBadge}</Badge> : null}
+                      </View>
+                      <AppText numberOfLines={1} family="inter" style={{ fontSize: 13, color: COLORS.gray500, lineHeight: 18, marginBottom: 6 }}>
                         {latestMessage?.text || copy.supportHint}
                       </AppText>
-                      {thread.has_unread_support_reply ? (
-                        <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: "#3797F0" }} />
-                      ) : null}
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500 }}>
+                          {latestMessage?.created_at ? formatDateTime(latestMessage.created_at, app.language) : ""}
+                        </AppText>
+                        <Ionicons name="chevron-forward" size={16} color={COLORS.gray300} />
+                      </View>
                     </View>
                   </View>
                 </Pressable>
@@ -457,7 +441,7 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
             <SectionHeader title={copy.quickReplies} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 24 }}>
               {app.quickReplies.map((reply) => (
-                <Pressable key={reply.id} onPress={() => quickReplySend(reply.text)} style={{ borderRadius: 999, backgroundColor: "#F7F7F8", borderWidth: 1, borderColor: "#E9E9EC", paddingHorizontal: 14, paddingVertical: 10 }}>
+                <Pressable key={reply.id} onPress={() => quickReplySend(reply.text)} style={{ borderRadius: 999, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray200, paddingHorizontal: 14, paddingVertical: 10 }}>
                   <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
                     {reply.title}
                   </AppText>
@@ -470,7 +454,7 @@ export function SupportScreen({ app, error, loading, navigation, onOpenThread, o
         <SectionHeader title={copy.faqTitle} />
         <View style={{ gap: 12 }}>
           {(app.content?.home?.faq?.items || []).map((item) => (
-            <View key={item.id || item.q} style={{ borderRadius: 22, backgroundColor: COLORS.white, borderWidth: 1, borderColor: "#E9E9EC", padding: 18 }}>
+            <View key={item.id || item.q} style={{ borderRadius: 20, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray200, padding: 18, ...SHADOWS.card }}>
               <AppText family="sora" weight="bold" style={{ fontSize: 15, color: COLORS.black, marginBottom: 8 }}>
                 {item.q}
               </AppText>
@@ -520,34 +504,32 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
   }, []);
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.white }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.gray100 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
       <PageContent style={{ flex: 1, paddingHorizontal: 16, paddingTop: insets.top + 8, paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 10) }}>
-        <View style={{ flexDirection: "row", alignItems: "center", paddingBottom: 12, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: "#E9E9EC" }}>
-          <Pressable onPress={navigation.goBack} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="chevron-back" size={24} color={COLORS.black} />
-          </Pressable>
-          <LinearGradient colors={["#FEDA75", "#FA7E1E", "#D62976", "#962FBF", "#4F5BD5"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 42, height: 42, borderRadius: 21, padding: 2 }}>
-            <View style={{ flex: 1, borderRadius: 19, backgroundColor: COLORS.white, alignItems: "center", justifyContent: "center" }}>
-              <AppText family="inter" weight="bold" style={{ fontSize: 13, color: COLORS.black }}>
+        <View style={{ borderRadius: 22, backgroundColor: COLORS.white, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 12, borderWidth: 1, borderColor: COLORS.gray200, ...SHADOWS.card }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Pressable onPress={navigation.goBack} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="chevron-back" size={20} color={COLORS.gray500} />
+            </Pressable>
+            <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center", marginLeft: 4 }}>
+              <AppText family="sora" weight="bold" style={{ fontSize: 13, color: COLORS.gold }}>
                 {threadAvatar || "SP"}
               </AppText>
             </View>
-          </LinearGradient>
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <AppText family="inter" weight="bold" style={{ fontSize: 15, color: COLORS.black }}>
-              {threadTitle}
-            </AppText>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
-              <View style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: "#34C759" }} />
-              <AppText family="inter" weight="medium" style={{ fontSize: 12, color: "#8E8E93" }}>
-                Online
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <AppText family="sora" weight="bold" style={{ fontSize: 16, color: COLORS.black }}>
+                {threadTitle}
+              </AppText>
+              <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500, marginTop: 2 }}>
+                Bali Support
               </AppText>
             </View>
+            <Pressable onPress={onStartThread} style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: COLORS.gray100, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="create-outline" size={18} color={COLORS.black} />
+            </Pressable>
           </View>
-          <Pressable onPress={onStartThread} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F7F7F8", alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="create-outline" size={18} color={COLORS.black} />
-          </Pressable>
         </View>
+
         {loading && !messages.length ? <LoadingBlock label={copy.loading} /> : null}
         {error ? (
           <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#FEF2F2", paddingHorizontal: 14, paddingVertical: 12 }}>
@@ -556,7 +538,8 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
             </AppText>
           </View>
         ) : null}
-        <View style={{ flex: 1, borderRadius: 30, backgroundColor: "#F7F7F8", overflow: "hidden", paddingHorizontal: 10, paddingTop: 12 }}>
+
+        <View style={{ flex: 1, borderRadius: 26, backgroundColor: COLORS.white, overflow: "hidden", borderWidth: 1, borderColor: COLORS.gray200, paddingHorizontal: 12, paddingTop: 14, ...SHADOWS.card }}>
           <ScrollView
             ref={scrollRef}
             showsVerticalScrollIndicator={false}
@@ -570,23 +553,21 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
               return (
                 <View key={item.id} style={{ flexDirection: "row", justifyContent: own ? "flex-end" : "flex-start", alignItems: "flex-end", gap: 8 }}>
                   {!own ? (
-                    <LinearGradient colors={["#FEDA75", "#FA7E1E", "#D62976", "#962FBF", "#4F5BD5"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 28, height: 28, borderRadius: 14, padding: 1.5 }}>
-                      <View style={{ flex: 1, borderRadius: 12.5, backgroundColor: COLORS.white, alignItems: "center", justifyContent: "center" }}>
-                        <AppText family="inter" weight="bold" style={{ fontSize: 9, color: COLORS.black }}>
-                          {threadAvatar || "SP"}
-                        </AppText>
-                      </View>
-                    </LinearGradient>
+                    <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center" }}>
+                      <AppText family="sora" weight="bold" style={{ fontSize: 9, color: COLORS.gold }}>
+                        {threadAvatar || "SP"}
+                      </AppText>
+                    </View>
                   ) : null}
                   <View
                     style={{
                       maxWidth: "78%",
-                      borderRadius: 24,
-                      borderBottomRightRadius: own ? 8 : 24,
-                      borderBottomLeftRadius: own ? 24 : 8,
-                      backgroundColor: own ? "#3797F0" : COLORS.white,
+                      borderRadius: 22,
+                      borderBottomRightRadius: own ? 8 : 22,
+                      borderBottomLeftRadius: own ? 22 : 8,
+                      backgroundColor: own ? COLORS.black : COLORS.gray100,
                       borderWidth: own ? 0 : 1,
-                      borderColor: "#E9E9EC",
+                      borderColor: own ? "transparent" : COLORS.gray200,
                       paddingHorizontal: 14,
                       paddingVertical: 11,
                     }}
@@ -595,10 +576,10 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
                       {item.text}
                     </AppText>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 6 }}>
-                      <AppText family="inter" style={{ fontSize: 11, color: own ? "rgba(255,255,255,0.72)" : "#8E8E93" }}>
+                      <AppText family="inter" style={{ fontSize: 11, color: own ? "rgba(255,255,255,0.64)" : COLORS.gray500 }}>
                         {formatDateTime(item.created_at, app.language)}
                       </AppText>
-                      {item.pending ? <ActivityIndicator size="small" color={own ? "rgba(255,255,255,0.82)" : "#3797F0"} /> : null}
+                      {item.pending ? <ActivityIndicator size="small" color={own ? COLORS.gold : COLORS.black} /> : null}
                     </View>
                   </View>
                 </View>
@@ -606,10 +587,11 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
             })}
           </ScrollView>
         </View>
+
         {quickReplies.length && !keyboardVisible ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8, paddingTop: 14, paddingBottom: 12, paddingHorizontal: 2 }}>
             {quickReplies.map((reply) => (
-              <Pressable key={reply.id} onPress={() => setThreadMessage(reply.text)} style={{ borderRadius: 999, backgroundColor: COLORS.white, borderWidth: 1, borderColor: "#E9E9EC", paddingHorizontal: 14, paddingVertical: 10 }}>
+              <Pressable key={reply.id} onPress={() => setThreadMessage(reply.text)} style={{ borderRadius: 999, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray200, paddingHorizontal: 14, paddingVertical: 10 }}>
                 <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.black }}>
                   {reply.title}
                 </AppText>
@@ -617,25 +599,26 @@ export function ThreadScreen({ app, error, loading, sending, messages, navigatio
             ))}
           </ScrollView>
         ) : null}
+
         <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10, paddingTop: 4 }}>
-          <View style={{ flex: 1, minHeight: 54, maxHeight: 132, borderRadius: 28, backgroundColor: "#F7F7F8", borderWidth: 1, borderColor: "#E9E9EC", paddingLeft: 16, paddingRight: 16, paddingVertical: 8, flexDirection: "row", alignItems: "flex-end" }}>
+          <View style={{ flex: 1, minHeight: 54, maxHeight: 132, borderRadius: 22, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray200, paddingLeft: 16, paddingRight: 16, paddingVertical: 8, flexDirection: "row", alignItems: "flex-end" }}>
             <TextInput
               allowFontScaling={false}
               value={threadMessage}
               onChangeText={setThreadMessage}
               placeholder={copy.typeMessage}
-              placeholderTextColor="#8E8E93"
+              placeholderTextColor={COLORS.gray500}
               multiline
               style={{ flex: 1, maxHeight: 108, color: COLORS.black, fontSize: 15, paddingTop: 10, paddingBottom: 8 }}
             />
           </View>
           {keyboardVisible ? (
-            <Pressable onPress={Keyboard.dismiss} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginBottom: 3 }}>
+            <Pressable onPress={Keyboard.dismiss} style={{ width: 44, height: 44, borderRadius: 16, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray200, alignItems: "center", justifyContent: "center", marginBottom: 3 }}>
               <Ionicons name="chevron-down" size={22} color={COLORS.black} />
             </Pressable>
           ) : null}
-          <Pressable onPress={onSend} disabled={!threadMessage.trim() || sending} style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: threadMessage.trim() && !sending ? "#3797F0" : COLORS.gray300, alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="arrow-up" size={22} color={COLORS.white} />
+          <Pressable onPress={onSend} disabled={!threadMessage.trim() || sending} style={{ width: 50, height: 50, borderRadius: 18, backgroundColor: threadMessage.trim() && !sending ? COLORS.black : COLORS.gray300, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="arrow-up" size={22} color={threadMessage.trim() && !sending ? COLORS.gold : COLORS.white} />
           </Pressable>
         </View>
       </PageContent>
