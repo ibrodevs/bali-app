@@ -98,6 +98,15 @@ export const SUPPORTED_CURRENCIES = [
   { code: "IDR", symbol: "Rp" },
 ];
 
+export const SUPPORTED_LANGUAGES = [
+  { api_code: "en", label: "English", flag: "🇬🇧" },
+  { api_code: "ru", label: "Русский", flag: "🇷🇺" },
+  { api_code: "zh", label: "中文", flag: "🇨🇳" },
+  { api_code: "id", label: "Bahasa Indonesia", flag: "🇮🇩" },
+  { api_code: "de", label: "Deutsch", flag: "🇩🇪" },
+  { api_code: "fr", label: "Français", flag: "🇫🇷" },
+];
+
 export const CURRENCY_RATES = {
   USD: 1,
   RUB: 98.5,

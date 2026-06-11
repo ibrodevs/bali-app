@@ -1,23 +1,18 @@
 import React, { useState } from "react";
-import { Pressable, View } from "react-native";
+import { ImageBackground, Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS, SHADOWS } from "../theme";
-import { AppText, CenteredScrollView, LabeledInput, LoadingBlock, LocaleBadge, PageContent, PrimaryButton } from "../components";
+import { AppLogo, AppText, CenteredScrollView, LabeledInput, LoadingBlock, LocaleBadge, PageContent, PrimaryButton } from "../components";
 
 export function SplashScreen({ copy }) {
   return (
     <View style={{ flex: 1, backgroundColor: "#060608", justifyContent: "center", alignItems: "center", paddingHorizontal: 28 }}>
       <View style={{ position: "absolute", width: 320, height: 320, borderRadius: 999, backgroundColor: "rgba(255,215,0,0.08)" }} />
-      <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center", marginBottom: 20, ...SHADOWS.gold }}>
-        <AppText family="sora" weight="black" style={{ fontSize: 36, color: COLORS.black }}>
-          S
-        </AppText>
+      <View style={{ marginBottom: 18, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.02)", ...SHADOWS.gold }}>
+        <AppLogo width={220} height={110} />
       </View>
-      <AppText family="sora" weight="extrabold" style={{ fontSize: 28, color: COLORS.white, letterSpacing: -1.1, marginBottom: 6 }}>
-        SCOOT <AppText family="sora" weight="regular" style={{ color: COLORS.gold }}>BALI</AppText>
-      </AppText>
       <AppText family="inter" weight="medium" style={{ fontSize: 13, color: "rgba(255,255,255,0.42)", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 56 }}>
         {copy.readyMvp}
       </AppText>
@@ -33,27 +28,48 @@ export function OnboardingScreen({ copy, step, navigation }) {
       title: copy.onboarding1Title,
       sub: copy.onboarding1Sub,
       cta: copy.onboarding1Cta,
+      image: copy.onboarding1Image,
       colors: ["#1A1A1A", "#080808"],
     },
     {
       title: copy.onboarding2Title,
       sub: copy.onboarding2Sub,
       cta: copy.onboarding2Cta,
+      image: copy.onboarding2Image,
       colors: ["#141824", "#080808"],
     },
     {
       title: copy.onboarding3Title,
       sub: copy.onboarding3Sub,
       cta: copy.onboarding3Cta,
+      image: copy.onboarding3Image,
       colors: ["#1A1410", "#080808"],
     },
   ];
   const current = screens[step - 1];
-  const nextRoute = step === 1 ? "onboarding-2" : step === 2 ? "onboarding-3" : "language";
+  const hasImage = Boolean(typeof current.image === "string" && current.image.trim());
+  const handleContinue = () => {
+    if (step === 3) {
+      navigation.completeOnboarding();
+      return;
+    }
+
+    const nextRoute = step === 1 ? "onboarding-2" : "onboarding-3";
+    navigation.replace(nextRoute);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.screenBlack }}>
       <LinearGradient colors={current.colors} style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingTop: insets.top }}>
+        {hasImage ? (
+          <ImageBackground
+            source={{ uri: current.image }}
+            resizeMode="cover"
+            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+          >
+            <LinearGradient colors={["rgba(6,6,8,0.18)", "rgba(6,6,8,0.68)", "rgba(6,6,8,0.92)"]} style={{ flex: 1 }} />
+          </ImageBackground>
+        ) : null}
         <AppText family="inter" weight="medium" style={{ fontSize: 11, color: "rgba(255,255,255,0.24)", textTransform: "uppercase", letterSpacing: 1.8 }}>
           {copy.onboardingBadge}
         </AppText>
@@ -72,7 +88,7 @@ export function OnboardingScreen({ copy, step, navigation }) {
             <View key={index} style={{ flex: index === step ? 1.5 : 1, height: 4, borderRadius: 999, backgroundColor: index === step ? COLORS.gold : "rgba(255,255,255,0.15)" }} />
           ))}
         </View>
-        <PrimaryButton variant="gold" onPress={() => navigation.replace(nextRoute)}>
+        <PrimaryButton variant="gold" onPress={handleContinue}>
           {current.cta} →
         </PrimaryButton>
       </PageContent>
@@ -80,7 +96,7 @@ export function OnboardingScreen({ copy, step, navigation }) {
   );
 }
 
-export function LanguageScreen({ copy, currencies, languages, navigation, selectedCurrency, selectedLanguage, setSelectedCurrency, setSelectedLanguage }) {
+export function LanguageScreen({ copy, languages, navigation, selectedLanguage, setSelectedLanguage }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -112,33 +128,6 @@ export function LanguageScreen({ copy, currencies, languages, navigation, select
             );
           })}
         </View>
-        <View style={{ marginTop: 28 }}>
-          <AppText family="inter" weight="bold" style={{ fontSize: 11, color: COLORS.gold, textTransform: "uppercase", letterSpacing: 1.6, marginBottom: 12 }}>
-            {copy.currency}
-          </AppText>
-          <AppText family="inter" style={{ fontSize: 14, color: COLORS.gray500, lineHeight: 22, marginBottom: 14 }}>
-            {copy.chooseCurrency}
-          </AppText>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            {currencies.map((item) => {
-              const active = selectedCurrency === item.code;
-              return (
-                <Pressable
-                  key={item.code}
-                  onPress={() => setSelectedCurrency(item.code)}
-                  style={{ minWidth: "31%", paddingHorizontal: 14, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: active ? COLORS.gold : COLORS.gray200, backgroundColor: active ? "rgba(255,215,0,0.06)" : COLORS.white }}
-                >
-                  <AppText family="sora" weight="semibold" style={{ fontSize: 15, color: COLORS.black, marginBottom: 2 }}>
-                    {item.code}
-                  </AppText>
-                  <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500 }}>
-                    {item.symbol}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
         <PrimaryButton variant="dark" style={{ marginTop: 24 }} onPress={() => navigation.afterLanguageConfirm()}>
           {copy.confirmLanguage}
         </PrimaryButton>
@@ -166,15 +155,8 @@ export function LoginScreen({
   return (
     <CenteredScrollView backgroundColor={COLORS.white}>
       <PageContent style={{ paddingHorizontal: 28, paddingTop: insets.top + 28, paddingBottom: Math.max(insets.bottom, 24) + 20 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 40 }}>
-          <View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center" }}>
-            <AppText family="sora" weight="black" style={{ fontSize: 14, color: COLORS.black }}>
-              S
-            </AppText>
-          </View>
-          <AppText family="sora" weight="bold" style={{ fontSize: 17, color: COLORS.black, letterSpacing: -0.5 }}>
-            SCOOT <AppText family="sora" weight="regular" style={{ color: COLORS.gold }}>BALI</AppText>
-          </AppText>
+        <View style={{ marginBottom: 32 }}>
+          <AppLogo width={168} height={84} />
         </View>
 
         <View style={{ flexDirection: "row", gap: 10, marginBottom: 24 }}>

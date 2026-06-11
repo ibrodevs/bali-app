@@ -29,11 +29,13 @@ import {
   getLanguageOption,
   isSupportedCurrency,
   localizeAddon,
+  SUPPORTED_LANGUAGES,
   SUPPORTED_CURRENCIES,
   getVehicleById,
   unwrapList,
 } from "./src/data";
 import { translate } from "./src/i18n";
+import { AppLogo } from "./src/components";
 import {
   BookingDatesScreen,
   BookingsScreen,
@@ -56,6 +58,7 @@ import {
 
 const STORAGE_KEYS = {
   language: "scoot-bali.language",
+  languageSelected: "scoot-bali.language-selected",
   currency: "scoot-bali.currency",
   session: "scoot-bali.session",
   onboarding: "scoot-bali.onboarding",
@@ -137,6 +140,7 @@ export default function App() {
   });
   const [fontGateExpired, setFontGateExpired] = useState(false);
   const [startupReady, setStartupReady] = useState(false);
+  const [hasSelectedInitialLanguage, setHasSelectedInitialLanguage] = useState(false);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [stack, setStack] = useState([{ name: "splash" }]);
   const [language, setLanguage] = useState("en");
@@ -292,8 +296,9 @@ export default function App() {
 
     async function restore() {
       try {
-        const [storedLanguage, storedCurrency, storedSession, storedOnboarding, storedSupportThreadSeenAt] = await Promise.all([
+        const [storedLanguage, storedLanguageSelected, storedCurrency, storedSession, storedOnboarding, storedSupportThreadSeenAt] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.language),
+          AsyncStorage.getItem(STORAGE_KEYS.languageSelected),
           AsyncStorage.getItem(STORAGE_KEYS.currency),
           AsyncStorage.getItem(STORAGE_KEYS.session),
           AsyncStorage.getItem(STORAGE_KEYS.onboarding),
@@ -313,6 +318,7 @@ export default function App() {
         if (storedSession) {
           setSession(JSON.parse(storedSession));
         }
+        setHasSelectedInitialLanguage(storedLanguageSelected === "1" || storedOnboarding === "1");
         setHasSeenOnboarding(storedOnboarding === "1");
         if (storedSupportThreadSeenAt) {
           try {
@@ -344,7 +350,9 @@ export default function App() {
     }
 
     const timeoutId = setTimeout(() => {
-      if (hasSeenOnboarding) {
+      if (!hasSelectedInitialLanguage) {
+        setStack([{ name: "language" }]);
+      } else if (hasSeenOnboarding) {
         setStack([{ name: "home" }]);
       } else {
         setStack([{ name: "onboarding-1" }]);
@@ -352,7 +360,7 @@ export default function App() {
     }, 1200);
 
     return () => clearTimeout(timeoutId);
-  }, [hasSeenOnboarding, route.name, session, startupReady]);
+  }, [hasSeenOnboarding, hasSelectedInitialLanguage, route.name, startupReady]);
 
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEYS.language, language).catch(() => {});
@@ -767,8 +775,13 @@ export default function App() {
   }
 
   async function handleAfterLanguageConfirm() {
-    await AsyncStorage.setItem(STORAGE_KEYS.onboarding, "1").catch(() => {});
-    setHasSeenOnboarding(true);
+    await AsyncStorage.setItem(STORAGE_KEYS.languageSelected, "1").catch(() => {});
+    setHasSelectedInitialLanguage(true);
+
+    if (!hasSeenOnboarding) {
+      setStack([{ name: "onboarding-1" }]);
+      return;
+    }
 
     if (session?.access) {
       try {
@@ -782,10 +795,16 @@ export default function App() {
       } catch {
         // ignore
       }
-      setStack((current) => (current.length > 1 ? current.slice(0, -1) : [{ name: "profile" }]));
+      setStack([{ name: "home" }]);
       return;
     }
 
+    setStack([{ name: "home" }]);
+  }
+
+  async function handleCompleteOnboarding() {
+    await AsyncStorage.setItem(STORAGE_KEYS.onboarding, "1").catch(() => {});
+    setHasSeenOnboarding(true);
     setStack([{ name: "home" }]);
   }
 
@@ -1197,7 +1216,8 @@ export default function App() {
     }
   }
 
-  const currentLanguageOption = getLanguageOption(bootstrap?.languages, language);
+  const availableLanguages = bootstrap?.languages?.length ? bootstrap.languages : SUPPORTED_LANGUAGES;
+  const currentLanguageOption = getLanguageOption(availableLanguages, language);
   const appContentOverrides = bootstrap?.dictionaryOverrides?.app || {};
   const copy = useMemo(
     () =>
@@ -1208,7 +1228,12 @@ export default function App() {
             if (typeof prop === "symbol") {
               return undefined;
             }
-            return appContentOverrides[String(prop)] || translate(language, String(prop));
+            const key = String(prop);
+            if (appContentOverrides[key]) {
+              return appContentOverrides[key];
+            }
+            const fallback = translate(language, key, "");
+            return fallback === key ? "" : fallback;
           },
         },
       ),
@@ -1235,7 +1260,7 @@ export default function App() {
     fleet,
     language,
     languageLabel: currentLanguageOption?.label || language.toUpperCase(),
-    languages: bootstrap?.languages || [],
+    languages: availableLanguages,
     labels,
     notifications,
     profile,
@@ -1307,27 +1332,23 @@ export default function App() {
       },
       finishBooking: () => handleCreateBooking(),
       afterLanguageConfirm: () => handleAfterLanguageConfirm(),
+      completeOnboarding: () => handleCompleteOnboarding(),
     }),
-    [bookingContact, deliveryAddress, language, paymentMethod, profile, quote, quoteLoading, scooter, session],
+    [currency, deliveryAddress, hasSeenOnboarding, language, quote, quoteLoading, scooter, session],
   );
 
   if ((!interLoaded || !soraLoaded) && !fontGateExpired) {
     return (
       <SafeAreaProvider>
         <View style={{ flex: 1, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
-          <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-            <Text style={{ fontSize: 36, fontWeight: "800", color: COLORS.black }}>S</Text>
-          </View>
-          <Text style={{ fontSize: 24, fontWeight: "700", color: COLORS.white, marginBottom: 14 }}>
-            Scoot Bali
-          </Text>
+          <AppLogo width={220} height={110} style={{ marginBottom: 18 }} />
           <ActivityIndicator size="small" color={COLORS.gold} />
         </View>
       </SafeAreaProvider>
     );
   }
 
-  if (!bootstrap && bootstrapLoading && route.name !== "splash") {
+  if (!bootstrap && bootstrapLoading && !["splash", "language"].includes(route.name)) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />
@@ -1340,7 +1361,7 @@ export default function App() {
     );
   }
 
-  if (!bootstrap && bootstrapError && route.name !== "splash") {
+  if (!bootstrap && bootstrapError && !["splash", "language"].includes(route.name)) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />
@@ -1372,12 +1393,9 @@ export default function App() {
       screen = (
         <LanguageScreen
           copy={copy}
-          currencies={SUPPORTED_CURRENCIES}
-          languages={bootstrap?.languages || []}
+          languages={availableLanguages}
           navigation={navigation}
-          selectedCurrency={currency}
           selectedLanguage={language}
-          setSelectedCurrency={setCurrency}
           setSelectedLanguage={setLanguage}
         />
       );

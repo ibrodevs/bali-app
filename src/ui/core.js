@@ -1,6 +1,7 @@
 import React from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SvgUri } from "react-native-svg";
 import { COLORS, FONTS, SHADOWS } from "../theme";
 
 const EMOJI_IONICON_MAP = {
@@ -65,11 +66,55 @@ function resolveFont(family, weight) {
   return FONTS.interRegular;
 }
 
+const APP_LOGO_MODULE = require("../../assets/logo.svg");
+
+function resolveLogoUri(source) {
+  if (!source) {
+    return null;
+  }
+
+  if (typeof source === "string") {
+    return source;
+  }
+
+  if (typeof source === "object") {
+    if (typeof source.uri === "string") {
+      return source.uri;
+    }
+    if (typeof source.default === "string") {
+      return source.default;
+    }
+    if (typeof source.default?.uri === "string") {
+      return source.default.uri;
+    }
+  }
+
+  if (typeof Image.resolveAssetSource === "function") {
+    return Image.resolveAssetSource(source)?.uri || null;
+  }
+
+  return null;
+}
+
 export function AppText({ children, family = "inter", weight = "regular", style, ...rest }) {
   return (
     <Text allowFontScaling={false} style={[{ fontFamily: resolveFont(family, weight) }, style]} {...rest}>
       {children}
     </Text>
+  );
+}
+
+export function AppLogo({ width = 180, height = 90, style }) {
+  const logoUri = resolveLogoUri(APP_LOGO_MODULE);
+
+  if (!logoUri) {
+    return null;
+  }
+
+  return (
+    <View style={style}>
+      <SvgUri uri={logoUri} width={width} height={height} />
+    </View>
   );
 }
 
