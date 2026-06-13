@@ -174,6 +174,7 @@ export function ProfileScreen({ app, navigation, onChangeCurrency, onChangeLangu
   const profileActions = isSignedIn
     ? [
         { icon: "document-text-outline", label: copy.myBookings, action: () => navigation.toTab("bookings") },
+        { icon: "pricetags-outline", label: copy.prices, action: () => navigation.push("prices") },
         { icon: "notifications-outline", label: `${copy.notifications} · ${notifications.filter((item) => !item.is_read).length}`, action: () => navigation.push("notifications") },
         { icon: "settings-outline", label: copy.accountSettings, action: () => navigation.push("settings") },
         { icon: "help-circle-outline", label: copy.helpSupport, action: () => navigation.push("support") },
@@ -182,6 +183,7 @@ export function ProfileScreen({ app, navigation, onChangeCurrency, onChangeLangu
     : [
         { icon: "person-outline", label: copy.signIn, action: navigation.openSignIn },
         { icon: "person-add-outline", label: copy.createAccount, action: navigation.openSignUp },
+        { icon: "pricetags-outline", label: copy.prices, action: () => navigation.push("prices") },
       ];
 
   async function handlePreferenceChange(type, value) {

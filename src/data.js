@@ -117,6 +117,24 @@ export const CURRENCY_RATES = {
 };
 
 export const DEFAULT_DELIVERY_SLOTS = ["09:00", "12:00", "16:00", "19:00"];
+export const DEFAULT_RENTAL_TIME_OPTIONS = ["08:00", "09:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00"];
+
+function parseTimeParts(value = "09:00") {
+  const [hoursRaw, minutesRaw] = String(value || "09:00").split(":");
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  return {
+    hours: Number.isFinite(hours) ? hours : 9,
+    minutes: Number.isFinite(minutes) ? minutes : 0,
+  };
+}
+
+function applyTimeToDate(dateValue, timeValue = "09:00") {
+  const next = new Date(dateValue);
+  const { hours, minutes } = parseTimeParts(timeValue);
+  next.setHours(hours, minutes, 0, 0);
+  return next;
+}
 
 export function getLocale(language = "en") {
   return LOCALES[language] || LOCALES.en;
@@ -155,6 +173,8 @@ export function createInitialBookingRange() {
   return {
     start: start.getTime(),
     end: end.getTime(),
+    startTime: "09:00",
+    endTime: "09:00",
   };
 }
 
@@ -163,11 +183,22 @@ export function getBookingDuration(range) {
     return 1;
   }
 
-  return Math.max(1, Math.round((range.end - range.start) / DAY_MS));
+  const startAt = applyTimeToDate(range.start, range.startTime || "09:00");
+  const endAt = applyTimeToDate(range.end, range.endTime || range.startTime || "09:00");
+  const diff = endAt.getTime() - startAt.getTime();
+  return Math.max(1, Math.ceil(diff / DAY_MS));
 }
 
 export function getSelectedRentalDays(range) {
-  return Array.from({ length: getBookingDuration(range) }, (_, index) => range.start + index * DAY_MS);
+  if (!range?.start || !range?.end) {
+    return [];
+  }
+
+  const days = [];
+  for (let cursor = range.start; cursor <= range.end; cursor += DAY_MS) {
+    days.push(cursor);
+  }
+  return days;
 }
 
 export function buildCalendarMonth(range, language = "en") {
@@ -237,9 +268,85 @@ export function formatDateTime(value, language = "en", options = { month: "short
 }
 
 export function formatDateRange(range, language = "en") {
-  const checkout = new Date(range.end);
-  const lastRideDay = addDays(checkout, -1);
-  return `${formatDate(range.start, language)} - ${formatDate(lastRideDay.getTime(), language)}`;
+  return `${formatDate(range.start, language)} - ${formatDate(range.end, language)}`;
+}
+
+function normalizeUiLanguage(language = "en") {
+  const short = String(language || "en").split("-")[0];
+  return ["en", "ru", "zh", "id", "de", "fr"].includes(short) ? short : "en";
+}
+
+function pluralizeRuDays(value) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return "день";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "дня";
+  return "дней";
+}
+
+export function formatRateRange(minDays, maxDays, language = "en") {
+  const locale = normalizeUiLanguage(language);
+  if (locale === "ru") {
+    if (maxDays == null) return `${minDays}+ дней`;
+    if (minDays === maxDays) return `${minDays} ${pluralizeRuDays(minDays)}`;
+    return `${minDays}-${maxDays} дней`;
+  }
+  if (locale === "zh") {
+    if (maxDays == null) return `${minDays}天以上`;
+    if (minDays === maxDays) return `${minDays}天`;
+    return `${minDays}-${maxDays}天`;
+  }
+  if (locale === "id") {
+    if (maxDays == null) return `${minDays}+ hari`;
+    if (minDays === maxDays) return `${minDays} hari`;
+    return `${minDays}-${maxDays} hari`;
+  }
+  if (locale === "de") {
+    if (maxDays == null) return `${minDays}+ Tage`;
+    if (minDays === maxDays) return `${minDays} Tag`;
+    return `${minDays}-${maxDays} Tage`;
+  }
+  if (locale === "fr") {
+    if (maxDays == null) return `${minDays}+ jours`;
+    if (minDays === maxDays) return `${minDays} jour`;
+    return `${minDays}-${maxDays} jours`;
+  }
+  if (maxDays == null) return `${minDays}+ days`;
+  if (minDays === maxDays) return `${minDays} day`;
+  return `${minDays}-${maxDays} days`;
+}
+
+export function formatBillingLabel(billingPeriodDays, language = "en") {
+  const locale = normalizeUiLanguage(language);
+  if (locale === "ru") {
+    if (billingPeriodDays === 1) return "в день";
+    return `за ${billingPeriodDays} ${pluralizeRuDays(billingPeriodDays)}`;
+  }
+  if (locale === "zh") {
+    if (billingPeriodDays === 1) return "每天";
+    return `每${billingPeriodDays}天`;
+  }
+  if (locale === "id") {
+    if (billingPeriodDays === 1) return "per hari";
+    return `per ${billingPeriodDays} hari`;
+  }
+  if (locale === "de") {
+    if (billingPeriodDays === 1) return "pro Tag";
+    return `pro ${billingPeriodDays} Tage`;
+  }
+  if (locale === "fr") {
+    if (billingPeriodDays === 1) return "par jour";
+    return `par ${billingPeriodDays} jours`;
+  }
+  if (billingPeriodDays === 1) return "per day";
+  return `per ${billingPeriodDays} days`;
+}
+
+export function formatAppliedTariffLabel(tariff, language = "en") {
+  if (!tariff) {
+    return "";
+  }
+  return `${formatRateRange(tariff.min_days, tariff.max_days, language)} · ${formatBillingLabel(tariff.billing_period_days, language)}`;
 }
 
 export function getLanguageOption(languages = [], apiCode = "en") {
@@ -334,7 +441,7 @@ export function getAddonTotalPrice(addon, rentalDays = 1) {
   return unitPrice * (priceType === "per_day" ? Math.max(1, rentalDays) : 1);
 }
 
-export function buildLocalBookingPreview({ addons = [], currency = "USD", deliveryZone, quote, range, scooter, selectedAddonIds = [] }) {
+export function buildLocalBookingPreview({ addons = [], currency = "USD", deliveryZone, language = "en", quote, range, scooter, selectedAddonIds = [] }) {
   if (quote) {
     return {
       duration: Number(quote.rental_days || getBookingDuration(range)),
@@ -347,6 +454,11 @@ export function buildLocalBookingPreview({ addons = [], currency = "USD", delive
       currency,
       addons: getAddonsByIds(addons, selectedAddonIds),
       zone: deliveryZone,
+      appliedTariff: quote.applied_tariff || null,
+      appliedTariffLabel: formatAppliedTariffLabel(quote.applied_tariff, language),
+      effectiveDailyPrice: quote.applied_tariff
+        ? convertAmount(Number(quote.applied_tariff.effective_daily_price_usd || 0), "USD", currency)
+        : convertAmount(Number(scooter?.priceUSD || 0), "USD", currency),
     };
   }
 
@@ -370,6 +482,9 @@ export function buildLocalBookingPreview({ addons = [], currency = "USD", delive
     currency,
     addons: selectedAddons,
     zone: deliveryZone,
+    appliedTariff: null,
+    appliedTariffLabel: "",
+    effectiveDailyPrice: convertAmount(Number(scooter?.priceUSD || 0), "USD", currency),
   };
 }
 
@@ -414,9 +529,9 @@ export function buildCreateBookingPayload({
   const apiPaymentMethod = paymentMethod === "crypto" ? "online_card" : paymentMethod;
   return {
     scooter_id: scooter.id,
-    start_datetime: toApiDateTime(range.start, "09:00"),
-    end_datetime: toApiDateTime(range.end, "09:00"),
-    delivery_time: toApiDateTime(range.start, deliverySlot),
+    start_datetime: toApiDateTime(range.start, range.startTime || "09:00"),
+    end_datetime: toApiDateTime(range.end, range.endTime || range.startTime || "09:00"),
+    delivery_time: toApiDateTime(range.start, deliverySlot || range.startTime || "09:00"),
     add_on_ids: selectedAddonIds,
     payment_method: apiPaymentMethod,
     currency,

@@ -49,6 +49,7 @@ import {
   OnboardingScreen,
   OrderConfirmedScreen,
   PaymentScreen,
+  PricesScreen,
   ProfileScreen,
   SettingsScreen,
   SplashScreen,
@@ -1310,6 +1311,7 @@ export default function App() {
         setSelectedScooterId(id);
         setStack((current) => [...current, { name: "detail" }]);
       },
+      openPrices: () => setStack((current) => [...current, { name: "prices" }]),
       startBooking: () => {
         if (!scooter?.available) {
           setQuoteError(translate(language, "scooterUnavailable"));
@@ -1433,6 +1435,9 @@ export default function App() {
       break;
     case "detail":
       screen = <DetailScreen app={app} navigation={navigation} scooter={scooter} />;
+      break;
+    case "prices":
+      screen = <PricesScreen app={app} navigation={navigation} />;
       break;
     case "booking-dates":
       screen = (

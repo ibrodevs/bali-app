@@ -8,6 +8,7 @@ import {
   buildBookingDeliveryLabel,
   buildCalendarMonth,
   buildLocalBookingPreview,
+  DEFAULT_RENTAL_TIME_OPTIONS,
   formatBookingStatus,
   formatBookingTotal,
   formatDate,
@@ -55,6 +56,39 @@ function formatDateKey(timestamp) {
   return `${year}-${month}-${day}`;
 }
 
+function TimeSlotSelector({ activeValue, label, onSelect, options = [] }) {
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <AppText family="inter" weight="bold" style={{ fontSize: 10, color: COLORS.gray500, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+        {label}
+      </AppText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {options.map((option) => {
+          const active = option === activeValue;
+          return (
+            <Pressable
+              key={`${label}-${option}`}
+              onPress={() => onSelect(option)}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: active ? COLORS.gold : COLORS.gray200,
+                backgroundColor: active ? COLORS.black : COLORS.white,
+              }}
+            >
+              <AppText family="inter" weight="bold" style={{ fontSize: 12, color: active ? COLORS.white : COLORS.gray700 }}>
+                {option}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 export function BookingDatesScreen({ app, bookingRange, navigation, scooter, setBookingRange }) {
   const insets = useSafeAreaInsets();
   const [visibleMonthStart, setVisibleMonthStart] = useState(() => startOfMonthValue(bookingRange.start));
@@ -76,6 +110,10 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
     next.setHours(0, 0, 0, 0);
     return next.getTime();
   }, []);
+
+  const updateBookingTime = (key, value) => {
+    setBookingRange((current) => ({ ...current, [key]: value }));
+  };
 
   useEffect(() => {
     const selectedMonth = startOfMonthValue(bookingRange.start);
@@ -151,24 +189,36 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
     if (statusForTimestamp(timestamp) !== "available") return;
 
     if (selectionMode === "start" || !bookingRange.start) {
-      setBookingRange({ start: timestamp, end: addDays(new Date(timestamp), 1).getTime() });
+      setBookingRange((current) => ({
+        ...current,
+        start: timestamp,
+        end: addDays(new Date(timestamp), 1).getTime(),
+      }));
       setSelectionMode("end");
       return;
     }
 
     if (timestamp <= bookingRange.start) {
-      setBookingRange({ start: timestamp, end: addDays(new Date(timestamp), 1).getTime() });
+      setBookingRange((current) => ({
+        ...current,
+        start: timestamp,
+        end: addDays(new Date(timestamp), 1).getTime(),
+      }));
       setSelectionMode("end");
       return;
     }
 
     if (rangeHasUnavailable(bookingRange.start, timestamp)) {
-      setBookingRange({ start: timestamp, end: addDays(new Date(timestamp), 1).getTime() });
+      setBookingRange((current) => ({
+        ...current,
+        start: timestamp,
+        end: addDays(new Date(timestamp), 1).getTime(),
+      }));
       setSelectionMode("end");
       return;
     }
 
-    setBookingRange({ start: bookingRange.start, end: timestamp });
+    setBookingRange((current) => ({ ...current, start: bookingRange.start, end: timestamp }));
     setSelectionMode("start");
   };
 
@@ -217,6 +267,22 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
               </Pressable>
             ))}
           </View>
+        </View>
+
+        <View style={{ borderRadius: 20, borderWidth: 1, borderColor: COLORS.gray200, backgroundColor: COLORS.white, padding: 16, marginBottom: 18, ...SHADOWS.card }}>
+          <SectionHeader title={copy.rideTime} />
+          <TimeSlotSelector
+            activeValue={bookingRange.startTime || "09:00"}
+            label={copy.startTime}
+            onSelect={(value) => updateBookingTime("startTime", value)}
+            options={DEFAULT_RENTAL_TIME_OPTIONS}
+          />
+          <TimeSlotSelector
+            activeValue={bookingRange.endTime || bookingRange.startTime || "09:00"}
+            label={copy.endTime}
+            onSelect={(value) => updateBookingTime("endTime", value)}
+            options={DEFAULT_RENTAL_TIME_OPTIONS}
+          />
         </View>
 
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -353,6 +419,10 @@ export function BookingDatesScreen({ app, bookingRange, navigation, scooter, set
             </Pressable>
           ))}
         </View>
+        <View style={{ borderRadius: 16, backgroundColor: COLORS.gray100, padding: 14, marginBottom: 20 }}>
+          <SummaryRow label={copy.startTime} value={bookingRange.startTime || "09:00"} />
+          <SummaryRow label={copy.endTime} value={bookingRange.endTime || bookingRange.startTime || "09:00"} border />
+        </View>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14, marginBottom: 20 }}>
           {[
@@ -403,6 +473,7 @@ export function DeliveryScreen({
     addons: app.addons,
     currency: app.currency,
     deliveryZone: zone,
+    language: app.language,
     quote,
     range: bookingRange,
     scooter,
@@ -495,6 +566,13 @@ export function DeliveryScreen({
               {quoteError}
             </AppText>
           ) : null}
+          {quote?.applied_tariff ? (
+            <>
+              <SummaryRow label={copy.appliedTariff} value={summary.appliedTariffLabel} />
+              <SummaryRow label={copy.effectiveRate} value={formatMoney(summary.effectiveDailyPrice, summary.currency, app.language)} />
+            </>
+          ) : null}
+          <SummaryRow label={copy.duration} value={`${summary.duration} ${app.labels.daysLabel}`} />
           <SummaryRow label={copy.rental} value={formatMoney(summary.rentalCost, summary.currency, app.language)} />
           <SummaryRow label={copy.addons} value={formatMoney(summary.addonsTotal, summary.currency, app.language)} />
           <SummaryRow label={copy.delivery} value={summary.deliveryFee === 0 ? copy.free : formatMoney(summary.deliveryFee, summary.currency, app.language)} />
@@ -544,6 +622,7 @@ export function PaymentScreen({
     addons: app.addons,
     currency: app.currency,
     deliveryZone: zone,
+    language: app.language,
     quote,
     range: bookingRange,
     scooter,
@@ -647,10 +726,20 @@ export function PaymentScreen({
           <AppText family="inter" style={{ fontSize: 13, color: COLORS.gray500, marginBottom: 16 }}>
             {`${formatDateRange(bookingRange, app.language)} · ${summary.duration} ${app.labels.daysLabel}`}
           </AppText>
+          <View style={{ borderRadius: 14, backgroundColor: COLORS.gray100, padding: 14, marginBottom: 16 }}>
+            <SummaryRow label={copy.startTime} value={bookingRange.startTime || "09:00"} />
+            <SummaryRow label={copy.endTime} value={bookingRange.endTime || bookingRange.startTime || "09:00"} border />
+          </View>
           <View style={{ borderTopWidth: 1, borderTopColor: COLORS.gray200, paddingTop: 14 }}>
             <AppText family="inter" weight="bold" style={{ fontSize: 11, color: COLORS.gray500, textTransform: "uppercase", letterSpacing: 1.1, marginBottom: 10 }}>
               {copy.breakdown}
             </AppText>
+            {quote?.applied_tariff ? (
+              <>
+                <SummaryRow label={copy.appliedTariff} value={summary.appliedTariffLabel} />
+                <SummaryRow label={copy.effectiveRate} value={formatMoney(summary.effectiveDailyPrice, summary.currency, app.language)} />
+              </>
+            ) : null}
             <SummaryRow label={copy.rental} value={formatMoney(summary.rentalCost, summary.currency, app.language)} />
             <SummaryRow label={copy.addons} value={formatMoney(summary.addonsTotal, summary.currency, app.language)} />
             <SummaryRow label={copy.delivery} value={summary.deliveryFee === 0 ? copy.free : formatMoney(summary.deliveryFee, summary.currency, app.language)} />

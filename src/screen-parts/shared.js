@@ -104,7 +104,7 @@ export function FleetCard({ actionLabel, copy, currency, language, onPress, scoo
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <AppText family="inter" weight="bold" style={{ fontSize: 10, color: COLORS.gray500, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>
-              {copy.perDay}
+              {copy.fromLabel || copy.perDay}
             </AppText>
             <AppText family="sora" weight="black" style={{ fontSize: 28, color: COLORS.black, letterSpacing: -1 }}>
               {formatConvertedMoney(scooter.priceUSD, "USD", currency, language)}
