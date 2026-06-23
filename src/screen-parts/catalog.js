@@ -2,23 +2,29 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiRequest } from "../api";
-import { formatBillingLabel, formatConvertedMoney, formatRateRange, getScooterGallery, vehicleMatchesCategory, vehicleMatchesSearch } from "../data";
+import { formatBillingLabel, formatRateRange, getHeadlinePrice, getHeadlineRatePrice, getScooterGallery, vehicleMatchesCategory, vehicleMatchesSearch } from "../data";
 import { COLORS, SHADOWS } from "../theme";
 import { AppText, Badge, BottomNav, CenteredScrollView, FilterPill, GlassCircleButton, LoadingBlock, PageContent, PrimaryButton, ResolvedIcon, ScooterThumb, SearchBar, Stars } from "../components";
 import { EmptyCard, FleetCard, ScreenHeader, SectionHeader } from "./shared";
 
 function buildCategoryOptions(fleet = [], labels = {}, copy = {}) {
-  const dynamicCategories = Array.from(
-    new Map(
-      fleet
-        .filter((vehicle) => vehicle?.type)
-        .map((vehicle) => {
-          const key = String(vehicle.type);
-          const label = vehicle?.typeLabel || labels?.[key] || key;
-          return [key, { key, label }];
-        }),
-    ).values(),
-  );
+  // Prefer the full set of vehicle types known to the backend (labels.types, from
+  // bootstrap.content.common.types) so a type with zero vehicles currently in stock
+  // still gets a filter pill, matching the website's /scooter-types listing.
+  const labelKeys = Object.keys(labels || {}).filter((key) => key !== "all");
+  const dynamicCategories = labelKeys.length
+    ? labelKeys.map((key) => ({ key, label: labels[key] }))
+    : Array.from(
+        new Map(
+          fleet
+            .filter((vehicle) => vehicle?.type)
+            .map((vehicle) => {
+              const key = String(vehicle.type);
+              const label = vehicle?.typeLabel || key;
+              return [key, { key, label }];
+            }),
+        ).values(),
+      );
 
   return [
     { key: "all", label: copy.all },
@@ -437,9 +443,16 @@ export function PricesScreen({ app, navigation }) {
                             {formatBillingLabel(Number(rate.billing_period_days || 1), app.language)}
                           </AppText>
                         </View>
-                        <AppText family="sora" weight="black" style={{ fontSize: 20, color: Number(rate.billing_period_days) === 30 ? COLORS.gold : COLORS.black, letterSpacing: -0.6 }}>
-                          {formatConvertedMoney(Number(rate.price_usd || 0), "USD", app.currency, app.language)}
-                        </AppText>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <AppText family="sora" weight="black" style={{ fontSize: 20, color: Number(rate.billing_period_days) === 30 ? COLORS.gold : COLORS.black, letterSpacing: -0.6 }}>
+                            {getHeadlineRatePrice(rate, app.currency, app.language).idrLabel}
+                          </AppText>
+                          {app.currency !== "IDR" ? (
+                            <AppText family="inter" style={{ fontSize: 11, color: Number(rate.billing_period_days) === 30 ? "rgba(255,255,255,0.58)" : COLORS.gray500 }}>
+                              {getHeadlineRatePrice(rate, app.currency, app.language).hintLabel}
+                            </AppText>
+                          ) : null}
+                        </View>
                       </View>
                     ))}
                   </View>
@@ -527,8 +540,13 @@ export function DetailScreen({ app, navigation, scooter }) {
             </View>
             <View>
               <AppText family="sora" weight="black" style={{ fontSize: 28, color: COLORS.black, textAlign: "right" }}>
-                {formatConvertedMoney(scooter.priceUSD, "USD", app.currency, language)}
+                {getHeadlinePrice(scooter, app.currency, language).idrLabel}
               </AppText>
+              {app.currency !== "IDR" ? (
+                <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500, textAlign: "right" }}>
+                  {getHeadlinePrice(scooter, app.currency, language).hintLabel}
+                </AppText>
+              ) : null}
               <AppText family="inter" style={{ fontSize: 12, color: COLORS.gray500, textAlign: "right" }}>
                 {copy.fromLabel || copy.perDay}
               </AppText>
@@ -570,9 +588,16 @@ export function DetailScreen({ app, navigation, scooter }) {
                       {formatBillingLabel(Number(tier.billing_period_days || 1), language)}
                     </AppText>
                   </View>
-                  <AppText family="sora" weight="black" style={{ fontSize: 20, color: Number(tier.billing_period_days) === 30 ? COLORS.gold : COLORS.black }}>
-                    {formatConvertedMoney(Number(tier.price_usd || 0), "USD", app.currency, language)}
-                  </AppText>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <AppText family="sora" weight="black" style={{ fontSize: 20, color: Number(tier.billing_period_days) === 30 ? COLORS.gold : COLORS.black }}>
+                      {getHeadlineRatePrice(tier, app.currency, language).idrLabel}
+                    </AppText>
+                    {app.currency !== "IDR" ? (
+                      <AppText family="inter" style={{ fontSize: 11, color: Number(tier.billing_period_days) === 30 ? "rgba(255,255,255,0.58)" : COLORS.gray500 }}>
+                        {getHeadlineRatePrice(tier, app.currency, language).hintLabel}
+                      </AppText>
+                    ) : null}
+                  </View>
                 </View>
               ))}
             </View>

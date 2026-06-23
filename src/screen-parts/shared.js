@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { formatConvertedMoney } from "../data";
+import { getHeadlinePrice } from "../data";
 import { COLORS, SHADOWS } from "../theme";
 import { AppText, Badge, ScooterThumb } from "../components";
 
@@ -107,8 +107,13 @@ export function FleetCard({ actionLabel, copy, currency, language, onPress, scoo
               {copy.fromLabel || copy.perDay}
             </AppText>
             <AppText family="sora" weight="black" style={{ fontSize: 28, color: COLORS.black, letterSpacing: -1 }}>
-              {formatConvertedMoney(scooter.priceUSD, "USD", currency, language)}
+              {getHeadlinePrice(scooter, currency, language).idrLabel}
             </AppText>
+            {currency !== "IDR" ? (
+              <AppText family="inter" weight="bold" style={{ fontSize: 12, color: COLORS.gray500 }}>
+                {getHeadlinePrice(scooter, currency, language).hintLabel}
+              </AppText>
+            ) : null}
           </View>
         </View>
         <View style={{ minHeight: 50, borderRadius: 16, backgroundColor: COLORS.black, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>

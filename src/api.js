@@ -33,10 +33,22 @@ export function resolveApiBaseUrl() {
     return `http://${expoHost}:8000/api/v1`;
   }
 
-  return "https://bali21.pythonanywhere.com/api/v1";
+  return "https://api.bali.bike/api/v1";
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
+
+export const MEDIA_BASE_URL = API_BASE_URL.replace(/\/api\/v1$/i, "");
+
+export function mediaUrl(path) {
+  if (!path) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return `${MEDIA_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+}
 
 export class ApiError extends Error {
   constructor(message, details = null, status = 500) {

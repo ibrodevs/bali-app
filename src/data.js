@@ -1,3 +1,5 @@
+import { mediaUrl } from "./api";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const ADDON_COPY = {
@@ -254,6 +256,37 @@ export function formatConvertedMoney(value, fromCurrency = "USD", toCurrency = "
   return formatMoney(convertAmount(value, fromCurrency, toCurrency), toCurrency, language);
 }
 
+export function formatGroupedAmount(amount, decimals = 0) {
+  const normalizedAmount = Number.isFinite(Number(amount)) ? Number(amount) : 0;
+  const fixed = normalizedAmount.toFixed(decimals);
+  const [intPart, fracPart] = fixed.split(".");
+  const sign = intPart.startsWith("-") ? "-" : "";
+  const digits = sign ? intPart.slice(1) : intPart;
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return fracPart ? `${sign}${grouped}.${fracPart}` : `${sign}${grouped}`;
+}
+
+// Matches the website's BRPrice: the headline price is always the admin-entered IDR
+// figure, never re-derived through the currency switcher's exchange rate. The
+// switcher only changes the small "≈ <currency>" hint shown alongside it.
+export function getHeadlinePrice(scooter, currency = "USD", language = "en") {
+  const priceIdr = scooter?.priceIDR != null ? Number(scooter.priceIDR) : convertAmount(Number(scooter?.priceUSD || 0), "USD", "IDR");
+  const idrLabel = `Rp ${formatGroupedAmount(Math.round(priceIdr), 0)}`;
+  if (currency === "IDR") {
+    return { idrLabel, hintLabel: "" };
+  }
+  const symbol = SUPPORTED_CURRENCIES.find((item) => item.code === currency)?.symbol || currency;
+  const convertedAmount = convertAmount(Number(scooter?.priceUSD || 0), "USD", currency);
+  const hintLabel = `≈ ${symbol}${formatGroupedAmount(convertedAmount, currency === "IDR" ? 0 : 2)}`;
+  return { idrLabel, hintLabel };
+}
+
+// Same as getHeadlinePrice but for rate/tier objects from the rates API, which use
+// snake_case price_usd/price_idr instead of the bootstrap payload's priceUSD/priceIDR.
+export function getHeadlineRatePrice(rate, currency = "USD", language = "en") {
+  return getHeadlinePrice({ priceUSD: rate?.price_usd, priceIDR: rate?.price_idr }, currency, language);
+}
+
 export function formatBookingTotal(booking, targetCurrency = "USD", language = "en") {
   const totalUsd = Number(booking?.total_price || booking?.total_usd || 0);
   return formatConvertedMoney(totalUsd, "USD", targetCurrency, language);
@@ -421,7 +454,7 @@ export function localizeAddon(addon, language = "en") {
 }
 
 export function getScooterPrimaryImage(scooter) {
-  return scooter?.mainImage || scooter?.main_image || scooter?.imageUrl || scooter?.gallery?.[0]?.image || null;
+  return mediaUrl(scooter?.mainImage || scooter?.main_image || scooter?.imageUrl || scooter?.gallery?.[0]?.image || null);
 }
 
 export function getScooterGallery(scooter) {
@@ -430,13 +463,15 @@ export function getScooterGallery(scooter) {
     scooter?.main_image,
     scooter?.imageUrl,
     ...(Array.isArray(scooter?.gallery) ? scooter.gallery.map((item) => item?.image) : []),
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .map(mediaUrl);
 
   return Array.from(new Set(images));
 }
 
 export function getAddonTotalPrice(addon, rentalDays = 1) {
-  const unitPrice = Number(addon?.priceUSD || addon?.price_usd || addon?.price || 0);
+  const unitPrice = Number(addon?.priceUSD ?? addon?.price_usd ?? addon?.price ?? 0);
   const priceType = String(addon?.priceType || addon?.price_type || "fixed").toLowerCase();
   return unitPrice * (priceType === "per_day" ? Math.max(1, rentalDays) : 1);
 }

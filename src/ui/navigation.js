@@ -4,16 +4,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import { mediaUrl } from "../api";
 import { COLORS } from "../theme";
 import { AppText } from "./core";
 
 export function ScooterThumb({ scooter, height = 150 }) {
-  const imageUri =
+  const imageUri = mediaUrl(
     scooter?.mainImage ||
     scooter?.main_image ||
     scooter?.imageUrl ||
     scooter?.gallery?.[0]?.image ||
-    null;
+    null,
+  );
 
   return (
     <LinearGradient
